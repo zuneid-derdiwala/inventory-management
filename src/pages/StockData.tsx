@@ -1,23 +1,19 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useData } from "@/context/DataContext";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
-import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
-interface StockItem {
-  model: string;
-  stock: number;
-}
 
 const StockData = () => {
-  const { database, availableBrands, availableBookingPersons, isLoadingData } = useData();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [open, setOpen] = useState(false); // State for popover open/close
+  const { database, isLoadingData } = useData();
+  const [selectedModel, setSelectedModel] = useState<string>("all");
+  const [selectedBrand, setSelectedBrand] = useState<string>("all");
+  const [selectedUsername, setSelectedUsername] = useState<string>("all");
 
   const inStockItems = useMemo(() => {
     const modelStockMap = new Map<string, number>();
@@ -35,34 +31,69 @@ const StockData = () => {
   const totalUnitStock = inStockItems.reduce((sum, item) => sum + item.stock, 0);
 
   const filteredStock = inStockItems.filter(item => {
-    const query = searchQuery.toLowerCase();
-    if (!query) return true; // Show all if search query is empty
-
-    // Check if the item's model matches the query
-    if (item.model.toLowerCase().includes(query)) {
+    // If all filters are set to "all", show all items
+    if (selectedModel === "all" && selectedBrand === "all" && selectedUsername === "all") {
       return true;
     }
 
-    // Check if any entry associated with this model matches by brand or booking person
-    return database.some(entry =>
-      entry.model.toLowerCase() === item.model.toLowerCase() &&
-      (entry.brand.toLowerCase().includes(query) ||
-       entry.bookingPerson.toLowerCase().includes(query))
-    );
+    // Check model filter
+    if (selectedModel !== "all" && item.model !== selectedModel) {
+      return false;
+    }
+
+    // Check brand filter
+    if (selectedBrand !== "all") {
+      const hasBrandMatch = database.some(entry =>
+        entry.model === item.model && entry.brand === selectedBrand
+      );
+      if (!hasBrandMatch) {
+        return false;
+      }
+    }
+
+    // Check username filter
+    if (selectedUsername !== "all") {
+      const hasUsernameMatch = database.some(entry =>
+        entry.model === item.model && entry.bookingPerson === selectedUsername
+      );
+      if (!hasUsernameMatch) {
+        return false;
+      }
+    }
+
+    return true;
   });
 
-  // Suggestions for the search box
-  const searchSuggestions = useMemo(() => {
-    const suggestions = new Set<string>();
+  // Get unique options for filters
+  const availableModels = useMemo(() => {
+    const models = new Set<string>();
     database.forEach(entry => {
-      if (entry.model) suggestions.add(entry.model);
-      if (entry.brand) suggestions.add(entry.brand);
-      // Removed IMEI from suggestions
-      if (entry.bookingPerson) suggestions.add(entry.bookingPerson);
+      if (entry.model) models.add(entry.model);
     });
-    const query = searchQuery.toLowerCase();
-    return Array.from(suggestions).filter(s => s.toLowerCase().includes(query)).sort();
-  }, [database, searchQuery]);
+    return Array.from(models).sort();
+  }, [database]);
+
+  const availableBrands = useMemo(() => {
+    const brands = new Set<string>();
+    database.forEach(entry => {
+      if (entry.brand) brands.add(entry.brand);
+    });
+    return Array.from(brands).sort();
+  }, [database]);
+
+  const availableUsernames = useMemo(() => {
+    const usernames = new Set<string>();
+    database.forEach(entry => {
+      if (entry.bookingPerson) usernames.add(entry.bookingPerson);
+    });
+    return Array.from(usernames).sort();
+  }, [database]);
+
+  const clearFilters = () => {
+    setSelectedModel("all");
+    setSelectedBrand("all");
+    setSelectedUsername("all");
+  };
 
   if (isLoadingData) {
     return (
@@ -95,44 +126,77 @@ const StockData = () => {
         <CardContent className="grid gap-6">
           <div className="font-bold">Total Unit Stock: {totalUnitStock}</div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="search">Search Stock</Label>
-            <Popover open={open} onOpenChange={setOpen}>
-              <PopoverTrigger asChild>
-                <Input
-                  id="search"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setOpen(true); // Open popover on change
-                  }}
-                  placeholder="Search by Model, Brand, or Booking Person" // Updated placeholder
-                />
-              </PopoverTrigger>
-              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-                <Command>
-                  <CommandInput placeholder="Search suggestions..." value={searchQuery} onValueChange={setSearchQuery} />
-                  <CommandEmpty>No suggestions found.</CommandEmpty>
-                  <CommandGroup>
-                    {searchSuggestions.map((suggestion) => (
-                      <CommandItem
-                        key={suggestion}
-                        onSelect={() => {
-                          setSearchQuery(suggestion);
-                          setOpen(false); // Close popover on select
-                        }}
-                      >
-                        {suggestion}
-                      </CommandItem>
+          <div className="grid gap-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-lg font-semibold">Filter Stock</Label>
+              <Button variant="outline" size="sm" onClick={clearFilters}>
+                Clear Filters
+              </Button>
+            </div>
+            
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-2">
+                <Label htmlFor="model-filter">Filter by Model</Label>
+                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Models</SelectItem>
+                    {availableModels.map((model) => (
+                      <SelectItem key={model} value={model}>
+                        {model}
+                      </SelectItem>
                     ))}
-                  </CommandGroup>
-                </Command>
-              </PopoverContent>
-            </Popover>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="brand-filter">Filter by Brand</Label>
+                <Select value={selectedBrand} onValueChange={setSelectedBrand}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select brand" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Brands</SelectItem>
+                    {availableBrands.map((brand) => (
+                      <SelectItem key={brand} value={brand}>
+                        {brand}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="username-filter">Filter by Username</Label>
+                <Select value={selectedUsername} onValueChange={setSelectedUsername}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select username" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Usernames</SelectItem>
+                    {availableUsernames.map((username) => (
+                      <SelectItem key={username} value={username}>
+                        {username}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
 
           <div className="mt-4">
-            <h3 className="text-xl font-semibold mb-2">In-Stock Details</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xl font-semibold">In-Stock Details</h3>
+              {(selectedModel !== "all" || selectedBrand !== "all" || selectedUsername !== "all") && (
+                <div className="text-sm text-muted-foreground">
+                  Showing {filteredStock.length} of {inStockItems.length} items
+                </div>
+              )}
+            </div>
             {filteredStock.length > 0 ? (
               <ul className="grid gap-2">
                 {filteredStock.map((item, index) => (
@@ -143,7 +207,7 @@ const StockData = () => {
                 ))}
               </ul>
             ) : (
-              <p className="text-muted-foreground">No stock items found matching your search.</p>
+              <p className="text-muted-foreground">No stock items found matching your filters.</p>
             )}
           </div>
         </CardContent>
