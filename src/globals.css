@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 20% 98%; /* Very light blue-gray */
+    --foreground: 220 50% 20%; /* Deep blue for text */
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 50% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 50% 20%;
+
+    --primary: 260 80% 60%; /* Bright purple */
+    --primary-foreground: 0 0% 100%; /* White */
+
+    --secondary: 180 70% 85%; /* Light teal */
+    --secondary-foreground: 220 50% 20%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --muted: 210 30% 95%; /* Light blue-gray */
+    --muted-foreground: 210 20% 50%; /* Medium gray-blue */
+
+    --accent: 30 90% 60%; /* Bright orange */
+    --accent-foreground: 0 0% 100%; /* White */
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 260 80% 60%; /* Primary color for ring */
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 240 10% 10%; /* Dark charcoal */
+    --foreground: 210 40% 90%; /* Light blue-gray */
+
+    --card: 240 10% 10%;
+    --card-foreground: 210 40% 90%;
+
+    --popover: 240 10% 10%;
+    --popover-foreground: 210 40% 90%;
+
+    --primary: 260 80% 75%; /* Brighter purple */
+    --primary-foreground: 240 10% 10%; /* Dark charcoal */
+
+    --secondary: 180 70% 70%; /* Medium teal */
+    --secondary-foreground: 210 40% 90%;
+
+    --muted: 240 10% 15%; /* Slightly lighter charcoal */
+    --muted-foreground: 210 20% 70%; /* Medium light gray-blue */
+
+    --accent: 30 90% 75%; /* Brighter orange */
+    --accent-foreground: 240 10% 10%; /* Dark charcoal */
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 260 80% 75%; /* Primary color for ring */
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans; /* Apply Poppins font */
+  }
+}

@@ -1,0 +1,1 @@
+SELECT public.get_email_by_username('your_username_here');
