@@ -47,9 +47,9 @@ const Index = () => {
           <Link to="/database">
             <Button variant="outline" className="w-full">Browse All Data</Button>
           </Link>
-          <Link to="/manage-data">
+          {/* <Link to="/manage-data">
             <Button variant="secondary" className="w-full">Manage Data</Button>
-          </Link>
+          </Link> */}
         </CardContent>
       </Card>
     </div>

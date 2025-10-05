@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,12 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Edit, Trash2, Search, ChevronDown } from "lucide-react";
+import { Edit, Trash2, Search } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"; // Import Collapsible
 import { Separator } from "@/components/ui/separator"; // Import Separator
 import DataImporter from "@/components/DataImporter"; // Import DataImporter
 import DataExporter from "@/components/DataExporter"; // Import DataExporter
@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
 
 const Database = () => {
   const { database, deleteEntry, availableBrands, availableModels, availableBookingPersons, isLoadingData } = useData();
+  const { isAdmin } = useAuth();
   const navigate = useNavigate();
 
   // States for input fields
@@ -38,8 +39,6 @@ const Database = () => {
   const [open2, setOpen2] = useState(false);
   const [open3, setOpen3] = useState(false);
 
-  // State for Data Import/Export collapsible
-  const [isDataManagementOpen, setIsDataManagementOpen] = useState(true);
 
   const handleSearch = () => {
     setActiveSearchQuery1(searchQuery1);
@@ -58,11 +57,11 @@ const Database = () => {
       (entry.outwardDate && format(entry.outwardDate, "dd/MM/yyyy").toLowerCase().includes(q1));
 
     const matchesQ2 = q2 === "" ||
-      entry.brand.toLowerCase().includes(q2) ||
-      entry.model.toLowerCase().includes(q2);
+      (entry.brand && entry.brand.toLowerCase().includes(q2)) ||
+      (entry.model && entry.model.toLowerCase().includes(q2));
 
     const matchesQ3 = q3 === "" ||
-      entry.bookingPerson.toLowerCase().includes(q3) ||
+      (entry.bookingPerson && entry.bookingPerson.toLowerCase().includes(q3)) ||
       (entry.buyer && entry.buyer.toLowerCase().includes(q3));
 
     // An entry matches if it satisfies all non-empty search queries
@@ -284,7 +283,7 @@ const Database = () => {
                     <TableHead>Buyer</TableHead>
                     <TableHead>Outward Date</TableHead>
                     <TableHead>Outward Amount</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    {isAdmin && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -300,34 +299,36 @@ const Database = () => {
                       <TableCell>{entry.buyer || "N/A"}</TableCell>
                       <TableCell>{entry.outwardDate ? format(entry.outwardDate, "dd/MM/yyyy") : "N/A"}</TableCell>
                       <TableCell>{entry.outwardAmount ? `₹${entry.outwardAmount}` : "N/A"}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="icon" onClick={() => handleEdit(entry.imei)}>
-                            <Edit className="h-4 w-4" />
-                            <span className="sr-only">Edit</span>
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="icon">
-                                <Trash2 className="h-4 w-4" />
-                                <span className="sr-only">Delete</span>
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This action cannot be undone. This will permanently delete the entry with IMEI: {entry.imei}.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(entry.imei)}>Delete</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
+                      {isAdmin && (
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="icon" onClick={() => handleEdit(entry.imei)}>
+                              <Edit className="h-4 w-4" />
+                              <span className="sr-only">Edit</span>
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="destructive" size="icon">
+                                  <Trash2 className="h-4 w-4" />
+                                  <span className="sr-only">Delete</span>
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This action cannot be undone. This will permanently delete the entry with IMEI: {entry.imei}.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDelete(entry.imei)}>Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

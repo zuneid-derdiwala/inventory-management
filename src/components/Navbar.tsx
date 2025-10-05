@@ -22,13 +22,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 const Navbar = () => {
   const isMobile = useIsMobile();
   const { isLoadingData } = useData();
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin } = useAuth();
 
   const navLinks = [
     { name: "Entry Form", path: "/entry-form" },
     { name: "Stock Data", path: "/stock-data" },
     { name: "Database", path: "/database" },
-    { name: "Manage Data", path: "/manage-data" },
+    ...(isAdmin ? [{ name: "Manage Data", path: "/manage-data" }] : []),
   ];
 
   const renderNavLinks = () => (

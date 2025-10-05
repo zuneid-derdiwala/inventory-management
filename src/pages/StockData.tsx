@@ -1,68 +1,85 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useData } from "@/context/DataContext";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 
 const StockData = () => {
   const { database, isLoadingData } = useData();
-  const [selectedModel, setSelectedModel] = useState<string>("all");
-  const [selectedBrand, setSelectedBrand] = useState<string>("all");
-  const [selectedUsername, setSelectedUsername] = useState<string>("all");
+  
+  // Initialize state from localStorage or defaults
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    return localStorage.getItem('stockData_selectedModel') || "all";
+  });
+  const [selectedBrand, setSelectedBrand] = useState<string>(() => {
+    return localStorage.getItem('stockData_selectedBrand') || "all";
+  });
+  const [selectedUsername, setSelectedUsername] = useState<string>(() => {
+    return localStorage.getItem('stockData_selectedUsername') || "all";
+  });
 
+  // Save filter state to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('stockData_selectedModel', selectedModel);
+  }, [selectedModel]);
+
+  useEffect(() => {
+    localStorage.setItem('stockData_selectedBrand', selectedBrand);
+  }, [selectedBrand]);
+
+  useEffect(() => {
+    localStorage.setItem('stockData_selectedUsername', selectedUsername);
+  }, [selectedUsername]);
+
+  // First filter the database entries based on the selected filters
+  const filteredEntries = useMemo(() => {
+    return database.filter(entry => {
+      // Only consider entries that are currently in stock (inward but not outward)
+      if (!entry.imei || !entry.model || !entry.inwardDate || entry.outwardDate) {
+        return false;
+      }
+
+      // Check model filter
+      if (selectedModel !== "all" && entry.model !== selectedModel) {
+        return false;
+      }
+
+      // Check brand filter
+      if (selectedBrand !== "all" && entry.brand !== selectedBrand) {
+        return false;
+      }
+
+      // Check username filter
+      if (selectedUsername !== "all" && entry.bookingPerson !== selectedUsername) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [database, selectedModel, selectedBrand, selectedUsername]);
+
+  // Calculate stock from filtered entries
   const inStockItems = useMemo(() => {
     const modelStockMap = new Map<string, number>();
 
-    database.forEach(entry => {
-      // Only consider entries that are currently in stock (inward but not outward)
-      if (entry.imei && entry.model && entry.inwardDate && !entry.outwardDate) {
+    filteredEntries.forEach(entry => {
+      if (entry.model) {
         modelStockMap.set(entry.model, (modelStockMap.get(entry.model) || 0) + 1);
       }
     });
 
     return Array.from(modelStockMap.entries()).map(([model, stock]) => ({ model, stock }));
-  }, [database]);
+  }, [filteredEntries]);
 
   const totalUnitStock = inStockItems.reduce((sum, item) => sum + item.stock, 0);
 
-  const filteredStock = inStockItems.filter(item => {
-    // If all filters are set to "all", show all items
-    if (selectedModel === "all" && selectedBrand === "all" && selectedUsername === "all") {
-      return true;
-    }
-
-    // Check model filter
-    if (selectedModel !== "all" && item.model !== selectedModel) {
-      return false;
-    }
-
-    // Check brand filter
-    if (selectedBrand !== "all") {
-      const hasBrandMatch = database.some(entry =>
-        entry.model === item.model && entry.brand === selectedBrand
-      );
-      if (!hasBrandMatch) {
-        return false;
-      }
-    }
-
-    // Check username filter
-    if (selectedUsername !== "all") {
-      const hasUsernameMatch = database.some(entry =>
-        entry.model === item.model && entry.bookingPerson === selectedUsername
-      );
-      if (!hasUsernameMatch) {
-        return false;
-      }
-    }
-
-    return true;
-  });
+  // For display purposes, we can use inStockItems directly since it's already filtered
+  const filteredStock = inStockItems;
 
   // Get unique options for filters
   const availableModels = useMemo(() => {
@@ -93,6 +110,10 @@ const StockData = () => {
     setSelectedModel("all");
     setSelectedBrand("all");
     setSelectedUsername("all");
+    // Clear localStorage as well
+    localStorage.removeItem('stockData_selectedModel');
+    localStorage.removeItem('stockData_selectedBrand');
+    localStorage.removeItem('stockData_selectedUsername');
   };
 
   if (isLoadingData) {
@@ -137,53 +158,38 @@ const StockData = () => {
             <div className="grid gap-4 md:grid-cols-3">
               <div className="grid gap-2">
                 <Label htmlFor="model-filter">Filter by Model</Label>
-                <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Models</SelectItem>
-                    {availableModels.map((model) => (
-                      <SelectItem key={model} value={model}>
-                        {model}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={selectedModel}
+                  onValueChange={setSelectedModel}
+                  options={availableModels}
+                  placeholder="Select model"
+                  searchPlaceholder="Search models..."
+                  emptyText="No models found."
+                />
               </div>
 
               <div className="grid gap-2">
                 <Label htmlFor="brand-filter">Filter by Brand</Label>
-                <Select value={selectedBrand} onValueChange={setSelectedBrand}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select brand" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Brands</SelectItem>
-                    {availableBrands.map((brand) => (
-                      <SelectItem key={brand} value={brand}>
-                        {brand}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={selectedBrand}
+                  onValueChange={setSelectedBrand}
+                  options={availableBrands}
+                  placeholder="Select brand"
+                  searchPlaceholder="Search brands..."
+                  emptyText="No brands found."
+                />
               </div>
 
               <div className="grid gap-2">
                 <Label htmlFor="username-filter">Filter by Username</Label>
-                <Select value={selectedUsername} onValueChange={setSelectedUsername}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select username" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Usernames</SelectItem>
-                    {availableUsernames.map((username) => (
-                      <SelectItem key={username} value={username}>
-                        {username}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={selectedUsername}
+                  onValueChange={setSelectedUsername}
+                  options={availableUsernames}
+                  placeholder="Select username"
+                  searchPlaceholder="Search usernames..."
+                  emptyText="No usernames found."
+                />
               </div>
             </div>
           </div>
@@ -193,7 +199,7 @@ const StockData = () => {
               <h3 className="text-xl font-semibold">In-Stock Details</h3>
               {(selectedModel !== "all" || selectedBrand !== "all" || selectedUsername !== "all") && (
                 <div className="text-sm text-muted-foreground">
-                  Showing {filteredStock.length} of {inStockItems.length} items
+                  Showing {filteredStock.length} items
                 </div>
               )}
             </div>

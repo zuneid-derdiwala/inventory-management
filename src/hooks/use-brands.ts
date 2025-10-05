@@ -15,7 +15,7 @@ export function useBrands() {
   const fetchBrands = useCallback(async () => {
     setIsLoading(true);
     
-    console.log("Fetching brands - User:", !!user, "Supabase URL:", (supabase as any).url);
+    // console.log("Fetching brands - User:", !!user, "Supabase client:", !!supabase);
     
     // Only fetch if user is authenticated
     if (!user) {
@@ -26,7 +26,7 @@ export function useBrands() {
     }
     
     // Check if supabase is properly configured
-    if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
+    if (typeof supabase === 'object' && 'from' in supabase) {
       const response: any = await supabase.from(TABLE_NAME).select("name").order("name", { ascending: true });
 
       if (response.error) {

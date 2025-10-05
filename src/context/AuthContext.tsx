@@ -9,6 +9,8 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  isAdmin: boolean;
+  userRole: string | null;
   signUp: (email: string, password: string, username: string) => Promise<{ success: boolean; error?: string }>;
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
@@ -21,6 +23,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>('user'); // Default to 'user'
+
+  const fetchUserRole = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user role:', error);
+        setUserRole(null);
+        setIsAdmin(false);
+        return;
+      }
+
+      const role = data?.role || 'user';
+      setUserRole(role);
+      setIsAdmin(role === 'admin');
+      console.log('User role:', role, 'isAdmin:', role === 'admin');
+    } catch (error) {
+      console.error('Error fetching user role:', error);
+      setUserRole(null);
+      setIsAdmin(false);
+    }
+  };
 
   useEffect(() => {
     // Get initial session
@@ -31,6 +61,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setSession(session);
         setUser(session?.user ?? null);
+        if (session?.user) {
+          // Fetch role in background without blocking
+          fetchUserRole(session.user.id).catch(error => {
+            console.error("Error fetching user role:", error);
+            setUserRole('user');
+            setIsAdmin(false);
+          });
+        }
       }
       setLoading(false);
     };
@@ -42,6 +80,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       async (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
+        if (session?.user) {
+          // Fetch role in background without blocking
+          fetchUserRole(session.user.id).catch(error => {
+            console.error("Error fetching user role:", error);
+            setUserRole('user');
+            setIsAdmin(false);
+          });
+        } else {
+          setUserRole(null);
+          setIsAdmin(false);
+        }
         setLoading(false);
       }
     );
@@ -89,19 +138,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signIn = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       setLoading(true);
+      console.log("AuthContext: Attempting sign in for:", email);
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
+      console.log("AuthContext: Sign in result:", { data, error });
+
       if (error) {
+        console.log("AuthContext: Sign in error:", error);
         return { success: false, error: error.message };
       }
 
+      console.log("AuthContext: Sign in successful, data:", data);
       showSuccess("Welcome back!");
-      return { success: true };
+      const result = { success: true };
+      console.log("AuthContext: Returning result:", result);
+      return result;
     } catch (error) {
+      console.log("AuthContext: Sign in exception:", error);
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       return { success: false, error: errorMessage };
     } finally {
@@ -150,6 +207,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         user,
         session,
         loading,
+        isAdmin,
+        userRole,
         signUp,
         signIn,
         signOut,

@@ -41,7 +41,7 @@ export function useEntries({
     }
     
     // Check if supabase is properly configured
-    if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
+    if (typeof supabase === 'object' && 'from' in supabase) {
       const response: any = await supabase.from("entries").select("*").then((res: any) => res);
 
       if (response.error) {
@@ -49,6 +49,7 @@ export function useEntries({
         showError("Failed to load inventory data.");
         setDatabase([]);
       } else {
+        console.log("Raw entries data from Supabase:", response.data);
         const fetchedData: EntryData[] = (response.data || []).map((item: any) => ({
           imei: item.imei,
           brand: item.brand,
@@ -61,6 +62,7 @@ export function useEntries({
           outwardDate: parseSupabaseDate(item.outward_date),
           outwardAmount: item.outward_amount,
         }));
+        console.log("Processed entries data:", fetchedData);
         setDatabase(fetchedData);
       }
     } else {
@@ -100,7 +102,7 @@ export function useEntries({
     }
 
     // Check if supabase is properly configured
-    if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
+    if (typeof supabase === 'object' && 'from' in supabase) {
       const response: any = await supabase.from("entries").insert({
         imei: entry.imei,
         brand: entry.brand || null, // Explicitly null
@@ -279,7 +281,7 @@ export function useEntries({
     }
     
     // Check if supabase is properly configured
-    if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
+    if (typeof supabase === 'object' && 'from' in supabase) {
       const response: any = await supabase.from("entries").select("*").eq("imei", imei).single();
 
       if (response.error) {
@@ -326,7 +328,7 @@ export function useEntries({
     }
 
     // Check if supabase is properly configured
-    if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
+    if (typeof supabase === 'object' && 'from' in supabase) {
       const response: any = await supabase.from("entries").update({
         brand: entry.brand || null, // Explicitly null
         model: entry.model || null, // Explicitly null
@@ -380,7 +382,7 @@ export function useEntries({
     }
     
     // Check if supabase is properly configured
-    if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
+    if (typeof supabase === 'object' && 'from' in supabase) {
       const response: any = await supabase.from("entries").delete().eq("imei", imei);
 
       if (response.error) {
@@ -403,7 +405,7 @@ export function useEntries({
 
   const resetEntries = async () => {
     // Check if supabase is properly configured
-    if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
+    if (typeof supabase === 'object' && 'from' in supabase) {
       const response: any = await supabase.from("entries").delete().neq("imei", "NON_EXISTENT_IMEI"); // Delete all entries
       if (response.error) {
         console.error("Error resetting entries:", response.error);

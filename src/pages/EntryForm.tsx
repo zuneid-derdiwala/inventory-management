@@ -45,6 +45,7 @@ const EntryForm = () => {
   const [isInwardOpen, setIsInwardOpen] = useState(true);
   const [isOutwardOpen, setIsOutwardOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [showManualInput, setShowManualInput] = useState(false);
 
   const [searchParams] = useSearchParams();
 
@@ -78,6 +79,7 @@ const EntryForm = () => {
     setIsInwardOpen(true);
     setIsOutwardOpen(false);
     setIsScanning(false);
+    setShowManualInput(false);
     showSuccess("Form has been reset.");
   };
 
@@ -126,14 +128,22 @@ const EntryForm = () => {
   };
 
   const handleScanSuccess = (decodedText: string) => {
+    console.log("QR Code scanned successfully:", decodedText);
     showSuccess(`IMEI scanned: ${decodedText}`);
     setIsScanning(false);
     setFormData((prev) => ({ ...prev, imei: decodedText }));
+    // Automatically search for the scanned IMEI
     handleSearch(decodedText);
   };
 
   const handleScanError = (errorMessage: string) => {
     console.error("QR Scan Error:", errorMessage);
+    // Only show error for critical issues, not for normal scanning attempts
+    if (errorMessage.includes("Permission denied") || 
+        errorMessage.includes("No cameras found") ||
+        errorMessage.includes("NotAllowedError")) {
+      showError("Camera access issue: " + errorMessage);
+    }
   };
 
   const handleBrandSelectChange = (value: string) => {
@@ -235,15 +245,62 @@ const EntryForm = () => {
                   )}
                 </div>
                 {isScanning && (
-                  <div className="mt-2 p-2 border rounded-md bg-gray-50 dark:bg-gray-800">
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Scanning for QR code...
+                  <div className="mt-2 p-4 border rounded-md bg-gray-50 dark:bg-gray-800">
+                    <div className="flex items-center gap-2 mb-3">
+                      <QrCode className="h-4 w-4 text-primary" />
+                      <p className="text-sm font-medium">QR Code Scanner</p>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Position the QR code within the camera view to scan the IMEI.
                     </p>
-                    <QrScanner
-                      qrCodeContainerId="qr-code-entry-form"
-                      onScanSuccess={handleScanSuccess}
-                      onScanError={handleScanError}
-                    />
+                    <div className="w-full min-h-[300px] flex items-center justify-center">
+                      <QrScanner
+                        qrCodeContainerId="qr-code-entry-form"
+                        onScanSuccess={handleScanSuccess}
+                        onScanError={handleScanError}
+                      />
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowManualInput(!showManualInput)}
+                      >
+                        {showManualInput ? "Hide" : "Show"} Manual Input
+                      </Button>
+                    </div>
+                    {showManualInput && (
+                      <div className="mt-3 p-3 border rounded-md bg-blue-50 dark:bg-blue-900/20">
+                        <p className="text-sm font-medium mb-2">Manual IMEI Input:</p>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Enter IMEI manually"
+                            value={formData.imei}
+                            onChange={handleChange}
+                            id="imei"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (formData.imei) {
+                                handleSearch(formData.imei);
+                                setShowManualInput(false);
+                              }
+                            }}
+                          >
+                            Search
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-3 text-xs text-muted-foreground">
+                      <p>💡 Tips:</p>
+                      <ul className="list-disc list-inside space-y-1 mt-1">
+                        <li>Ensure good lighting</li>
+                        <li>Hold the QR code steady</li>
+                        <li>Make sure the QR code is clearly visible</li>
+                      </ul>
+                    </div>
                   </div>
                 )}
               </div>
