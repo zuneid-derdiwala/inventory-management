@@ -230,6 +230,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
   const [lastErrorTime, setLastErrorTime] = useState<number>(0);
   const [isInitializing, setIsInitializing] = useState(false);
   const [emergencyStop, setEmergencyStop] = useState(false);
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
   
   // Function to switch between camera and upload modes
   const switchToUploadMode = useCallback(async () => {
@@ -869,18 +870,19 @@ const QrScanner: React.FC<QrScannerProps> = ({
         return;
       }
       
-      // Prefer front-facing camera for desktop/laptop, fallback to any camera
+      // Prefer back camera for better QR scanning, fallback to any camera
       let cameraId = devices[0].id;
-      const frontCamera = devices.find(device => 
-        device.label.toLowerCase().includes('front') || 
-        device.label.toLowerCase().includes('facing') ||
-        device.label.toLowerCase().includes('user')
+      const backCamera = devices.find(device => 
+        device.label.toLowerCase().includes('back') || 
+        device.label.toLowerCase().includes('rear') ||
+        device.label.toLowerCase().includes('environment') ||
+        device.label.toLowerCase().includes('world')
       );
       
-      if (frontCamera) {
-        cameraId = frontCamera.id;
-        setSelectedCameraId(frontCamera.id);
-        console.log("Using front-facing camera:", frontCamera.label);
+      if (backCamera) {
+        cameraId = backCamera.id;
+        setSelectedCameraId(backCamera.id);
+        console.log("Using back camera:", backCamera.label);
       } else {
         setSelectedCameraId(devices[0].id);
         console.log("Using first available camera:", devices[0].label);
@@ -897,7 +899,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
           qrbox: { width: 250, height: 250 },
           // Desktop-optimized constraints
           videoConstraints: {
-            facingMode: "user", // Prefer front-facing camera
+            facingMode: "environment", // Prefer back camera
             width: { ideal: 1280 },
             height: { ideal: 720 }
           }
@@ -1256,17 +1258,66 @@ const QrScanner: React.FC<QrScannerProps> = ({
             <label className="text-sm font-medium mb-2 block">Select Camera:</label>
             <select 
               value={selectedCameraId} 
-              onChange={(e) => setSelectedCameraId(e.target.value)}
+              onChange={async (e) => {
+                const newCameraId = e.target.value;
+                setSelectedCameraId(newCameraId);
+                
+                // If scanner is active, restart with new camera
+                if (isInitialized && html5QrcodeRef.current) {
+                  console.log("Switching to camera:", newCameraId);
+                  setIsSwitchingCamera(true);
+                  try {
+                    // Stop current scanner
+                    await safeStopScanner(html5QrcodeRef.current);
+                    setIsInitialized(false);
+                    
+                    // Restart with new camera
+                    setTimeout(() => {
+                      initializeScanner();
+                      setIsSwitchingCamera(false);
+                    }, 500);
+                  } catch (error) {
+                    console.error("Error switching camera:", error);
+                    setIsSwitchingCamera(false);
+                  }
+                }
+              }}
               className="w-full p-2 border rounded-md text-sm"
-              disabled={isInitialized}
             >
-              {availableCameras.map((camera) => (
-                <option key={camera.id} value={camera.id}>
-                  {camera.label || `Camera ${camera.id.slice(0, 8)}`}
-                </option>
-              ))}
+              {availableCameras.map((camera) => {
+                const label = camera.label || `Camera ${camera.id.slice(0, 8)}`;
+                const isBackCamera = label.toLowerCase().includes('back') || 
+                                   label.toLowerCase().includes('rear') ||
+                                   label.toLowerCase().includes('environment') ||
+                                   label.toLowerCase().includes('world');
+                const isFrontCamera = label.toLowerCase().includes('front') || 
+                                    label.toLowerCase().includes('user') ||
+                                    label.toLowerCase().includes('facing');
+                
+                let displayLabel = label;
+                if (isBackCamera) displayLabel = `📷 ${label} (Back)`;
+                else if (isFrontCamera) displayLabel = `🤳 ${label} (Front)`;
+                else displayLabel = `📹 ${label}`;
+                
+                return (
+                  <option key={camera.id} value={camera.id}>
+                    {displayLabel}
+                  </option>
+                );
+              })}
             </select>
-            {!isInitialized && selectedCameraId && (
+            
+            {/* Camera switching indicator */}
+            {isSwitchingCamera && (
+              <div className="mt-2 p-2 bg-blue-50 rounded-md">
+                <p className="text-xs text-blue-600 flex items-center">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-2"></div>
+                  Switching camera...
+                </p>
+              </div>
+            )}
+            
+            {!isInitialized && selectedCameraId && !isSwitchingCamera && (
               <button
                 onClick={() => initializeScanner()}
                 className="mt-2 px-3 py-1 bg-primary text-primary-foreground rounded text-sm hover:bg-primary/90"
