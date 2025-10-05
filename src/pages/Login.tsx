@@ -11,7 +11,7 @@ import { Loader2, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const Login = () => {
-  const [email, setEmail] = useState("");
+  const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -25,7 +25,7 @@ const Login = () => {
     setError("");
     setIsLoading(true);
 
-    const result = await signIn(email, password);
+    const result = await signIn(usernameOrEmail, password);
     
     if (result.success) {
       navigate("/");
@@ -54,13 +54,13 @@ const Login = () => {
             )}
             
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="usernameOrEmail">Username or Email</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="Enter your email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="usernameOrEmail"
+                type="text"
+                placeholder="Enter your username or email"
+                value={usernameOrEmail}
+                onChange={(e) => setUsernameOrEmail(e.target.value)}
                 required
                 disabled={isLoading}
               />

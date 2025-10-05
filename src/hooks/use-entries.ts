@@ -28,7 +28,7 @@ export function useEntries({
 }: UseEntriesProps) {
   const [database, setDatabase] = useState<EntryData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   const fetchEntries = useCallback(async () => {
     setIsLoading(true);
@@ -42,7 +42,15 @@ export function useEntries({
     
     // Check if supabase is properly configured
     if (typeof supabase === 'object' && 'from' in supabase) {
-      const response: any = await supabase.from("entries").select("*").then((res: any) => res);
+      // Build query based on user role
+      let query = supabase.from("entries").select("*");
+      
+      // If user is not admin, filter by user_id
+      if (!isAdmin) {
+        query = query.eq('user_id', user.id);
+      }
+      
+      const response: any = await query.then((res: any) => res);
 
       if (response.error) {
         console.error("Error fetching entries:", response.error);
@@ -85,7 +93,7 @@ export function useEntries({
       }
     }
     setIsLoading(false);
-  }, [user]);
+  }, [user, isAdmin]);
 
   useEffect(() => {
     fetchEntries();
@@ -96,8 +104,9 @@ export function useEntries({
       showError("IMEI is required to add an entry.");
       return false;
     }
+    // Check for duplicate IMEI in current database state
     if (database.some((e) => e.imei === entry.imei)) {
-      showError("IMEI already entered.");
+      showError("IMEI already exists in your current data. Please check the Database tab.");
       return false;
     }
 
@@ -119,7 +128,19 @@ export function useEntries({
 
       if (response.error) {
         console.error("Error adding entry:", response.error);
-        showError("Failed to add entry.");
+        
+        // Handle specific error cases
+        if (response.error.code === "23505") {
+          if (response.error.message.includes("entries_pkey")) {
+            showError("An entry with this IMEI already exists for your account.");
+          } else if (response.error.message.includes("imei")) {
+            showError("An entry with this IMEI already exists for your account.");
+          } else {
+            showError("Duplicate entry detected. Please check your data.");
+          }
+        } else {
+          showError(`Failed to add entry: ${response.error.message}`);
+        }
         return false;
       }
 

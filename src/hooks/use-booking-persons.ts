@@ -24,6 +24,7 @@ export function useBookingPersons() {
     
     // Check if supabase is properly configured
     if (typeof supabase === 'object' && 'from' in supabase) {
+      // Get all booking persons (no user filtering for reference data)
       const response: any = await supabase.from(TABLE_NAME).select("name").order("name", { ascending: true });
 
       if (response.error) {

@@ -80,8 +80,10 @@ const QrScanner: React.FC<QrScannerProps> = ({
     const isChrome = userAgent.includes('chrome') && !userAgent.includes('edg');
     const isSafari = userAgent.includes('safari') && !userAgent.includes('chrome');
     const isEdge = userAgent.includes('edg');
+    const isIOS = /iphone|ipad|ipod/.test(userAgent);
+    const isMobile = /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/.test(userAgent);
     
-    return { isFirefox, isChrome, isSafari, isEdge };
+    return { isFirefox, isChrome, isSafari, isEdge, isIOS, isMobile };
   }, []);
 
   const safeStopScanner = useCallback(async (scanner: Html5Qrcode | null) => {
@@ -199,14 +201,23 @@ const QrScanner: React.FC<QrScannerProps> = ({
             facingMode: { ideal: 'environment' }
           }
         },
-        // Option 3: Basic constraints with any camera
+        // Option 3: iOS Safari specific constraints
+        ...(browserInfo.isIOS ? [{
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: { ideal: 'environment' },
+            frameRate: { ideal: 15 }
+          }
+        }] : []),
+        // Option 4: Basic constraints with any camera
         {
           video: {
             width: { ideal: 1280 },
             height: { ideal: 720 }
           }
         },
-        // Option 4: Minimal constraints
+        // Option 5: Minimal constraints
         { video: true }
       ];
       
@@ -263,7 +274,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
   }, [getBrowserInfo]);
 
   const getScannerConfig = useCallback(() => {
-    const { isFirefox, isSafari, isEdge } = getBrowserInfo();
+    const { isFirefox, isSafari, isEdge, isIOS, isMobile } = getBrowserInfo();
     
     // Universal configuration that works across all browsers
     const baseConfig = {
@@ -304,6 +315,29 @@ const QrScanner: React.FC<QrScannerProps> = ({
         ...baseConfig,
         fps: 8, // Moderate FPS for Edge
         useBarCodeDetectorIfSupported: false, // Edge has limited barcode support
+      };
+    }
+    
+    // iOS Safari specific configuration
+    if (isIOS) {
+      return {
+        ...baseConfig,
+        fps: 5, // Lower FPS for iOS stability
+        qrbox: { width: 200, height: 200 }, // Smaller QR box for mobile
+        showTorchButtonIfSupported: false, // iOS Safari has issues with torch
+        showZoomSliderIfSupported: false, // iOS Safari has issues with zoom
+        useBarCodeDetectorIfSupported: false, // Disable for iOS compatibility
+        aspectRatio: 1.0, // Square aspect ratio for mobile
+      };
+    }
+    
+    // Mobile browsers (Android, etc.)
+    if (isMobile) {
+      return {
+        ...baseConfig,
+        fps: 8, // Moderate FPS for mobile
+        qrbox: { width: 200, height: 200 }, // Smaller QR box for mobile
+        aspectRatio: 1.0, // Square aspect ratio for mobile
       };
     }
     
@@ -622,9 +656,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
       
       if (scannerRef.current) {
         scannerRef.current.clear().catch((err) => {
-          console.error("Failed to clear scanner on unmount:", err);
-        });
-        scannerRef.current = null;
+        console.error("Failed to clear scanner on unmount:", err);
+      });
+      scannerRef.current = null;
       }
       
       if (html5QrcodeRef.current) {
@@ -675,6 +709,16 @@ const QrScanner: React.FC<QrScannerProps> = ({
               <>
                 <li><strong>Chrome:</strong> Try disabling extensions that might block camera access</li>
                 <li><strong>Chrome:</strong> Check if camera is being used by another tab</li>
+              </>
+            )}
+            {getBrowserInfo().isIOS && (
+              <>
+                <li><strong>iPhone/iPad:</strong> Make sure you're using Safari (not Chrome or other browsers)</li>
+                <li><strong>iPhone/iPad:</strong> Go to Settings → Safari → Camera → Allow</li>
+                <li><strong>iPhone/iPad:</strong> Make sure the website is using HTTPS</li>
+                <li><strong>iPhone/iPad:</strong> Try refreshing the page after granting permissions</li>
+                <li><strong>iPhone/iPad:</strong> Make sure you're not in private browsing mode</li>
+                <li><strong>iPhone/iPad:</strong> Try closing other apps that might be using the camera</li>
               </>
             )}
           </ul>
@@ -804,8 +848,8 @@ const QrScanner: React.FC<QrScannerProps> = ({
               <p className="text-sm text-muted-foreground">Initializing camera...</p>
             </div>
           )}
-          {/* QR Code scanner will render here */}
-        </div>
+      {/* QR Code scanner will render here */}
+    </div>
       </div>
     </ScannerErrorBoundary>
   );

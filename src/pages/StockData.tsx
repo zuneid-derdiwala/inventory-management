@@ -7,6 +7,7 @@ import { useData } from "@/context/DataContext";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 
 const StockData = () => {
@@ -19,9 +20,25 @@ const StockData = () => {
   const [selectedBrand, setSelectedBrand] = useState<string>(() => {
     return localStorage.getItem('stockData_selectedBrand') || "all";
   });
-  const [selectedUsername, setSelectedUsername] = useState<string>(() => {
-    return localStorage.getItem('stockData_selectedUsername') || "all";
+  const [selectedBookingPerson, setSelectedBookingPerson] = useState<string>(() => {
+    return localStorage.getItem('stockData_selectedBookingPerson') || "all";
   });
+  
+  // State for tracking expanded items
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  
+  // Function to toggle expanded state
+  const toggleExpanded = (model: string) => {
+    setExpandedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(model)) {
+        newSet.delete(model);
+      } else {
+        newSet.add(model);
+      }
+      return newSet;
+    });
+  };
 
   // Save filter state to localStorage whenever it changes
   useEffect(() => {
@@ -33,50 +50,110 @@ const StockData = () => {
   }, [selectedBrand]);
 
   useEffect(() => {
-    localStorage.setItem('stockData_selectedUsername', selectedUsername);
-  }, [selectedUsername]);
+    localStorage.setItem('stockData_selectedBookingPerson', selectedBookingPerson);
+  }, [selectedBookingPerson]);
 
   // First filter the database entries based on the selected filters
   const filteredEntries = useMemo(() => {
+    console.log("StockData: Total database entries:", database.length);
+    console.log("StockData: Database entries:", database);
+    console.log("StockData: Selected filters:", { selectedModel, selectedBrand, selectedBookingPerson });
+    
     return database.filter(entry => {
-      // Only consider entries that are currently in stock (inward but not outward)
-      if (!entry.imei || !entry.model || !entry.inwardDate || entry.outwardDate) {
+      // Only require basic entry data (IMEI and model)
+      if (!entry.imei || !entry.model) {
+        console.log("StockData: Filtering out entry (missing basic data):", entry.imei, {
+          hasImei: !!entry.imei,
+          hasModel: !!entry.model
+        });
         return false;
       }
 
       // Check model filter
       if (selectedModel !== "all" && entry.model !== selectedModel) {
+        console.log("StockData: Filtering out entry by model:", {
+          entryImei: entry.imei,
+          entryModel: entry.model,
+          selectedModel: selectedModel,
+          match: entry.model === selectedModel
+        });
         return false;
       }
 
       // Check brand filter
       if (selectedBrand !== "all" && entry.brand !== selectedBrand) {
+        console.log("StockData: Filtering out entry by brand:", {
+          entryImei: entry.imei,
+          entryBrand: entry.brand,
+          selectedBrand: selectedBrand,
+          match: entry.brand === selectedBrand
+        });
         return false;
       }
 
-      // Check username filter
-      if (selectedUsername !== "all" && entry.bookingPerson !== selectedUsername) {
+      // Check booking person filter
+      if (selectedBookingPerson !== "all" && entry.bookingPerson !== selectedBookingPerson) {
+        console.log("StockData: Filtering out entry by booking person:", {
+          entryImei: entry.imei,
+          entryBookingPerson: entry.bookingPerson,
+          selectedBookingPerson: selectedBookingPerson,
+          match: entry.bookingPerson === selectedBookingPerson
+        });
         return false;
       }
 
+      console.log("StockData: Entry passed all filters:", {
+        imei: entry.imei,
+        model: entry.model,
+        brand: entry.brand,
+        bookingPerson: entry.bookingPerson,
+        inwardDate: entry.inwardDate,
+        outwardDate: entry.outwardDate
+      });
       return true;
     });
-  }, [database, selectedModel, selectedBrand, selectedUsername]);
+  }, [database, selectedModel, selectedBrand, selectedBookingPerson]);
+
+  // Debug the filtered entries
+  useEffect(() => {
+    console.log("StockData: Filtered entries count:", filteredEntries.length);
+    console.log("StockData: Filtered entries:", filteredEntries);
+  }, [filteredEntries]);
 
   // Calculate stock from filtered entries
   const inStockItems = useMemo(() => {
-    const modelStockMap = new Map<string, number>();
+    const modelStockMap = new Map<string, { inStock: number; sold: number; total: number }>();
 
     filteredEntries.forEach(entry => {
       if (entry.model) {
-        modelStockMap.set(entry.model, (modelStockMap.get(entry.model) || 0) + 1);
+        const current = modelStockMap.get(entry.model) || { inStock: 0, sold: 0, total: 0 };
+        
+        // Check if item is in stock (has inward date but no outward date)
+        const isInStock = entry.inwardDate && !entry.outwardDate;
+        const isSold = entry.inwardDate && entry.outwardDate;
+        
+        if (isInStock) {
+          current.inStock += 1;
+        } else if (isSold) {
+          current.sold += 1;
+        }
+        current.total += 1;
+        
+        modelStockMap.set(entry.model, current);
       }
     });
 
-    return Array.from(modelStockMap.entries()).map(([model, stock]) => ({ model, stock }));
+    return Array.from(modelStockMap.entries()).map(([model, stock]) => ({ 
+      model, 
+      inStock: stock.inStock,
+      sold: stock.sold,
+      total: stock.total
+    }));
   }, [filteredEntries]);
 
-  const totalUnitStock = inStockItems.reduce((sum, item) => sum + item.stock, 0);
+  const totalUnitStock = inStockItems.reduce((sum, item) => sum + item.inStock, 0);
+  const totalSoldStock = inStockItems.reduce((sum, item) => sum + item.sold, 0);
+  const totalItems = inStockItems.reduce((sum, item) => sum + item.total, 0);
 
   // For display purposes, we can use inStockItems directly since it's already filtered
   const filteredStock = inStockItems;
@@ -87,7 +164,13 @@ const StockData = () => {
     database.forEach(entry => {
       if (entry.model) models.add(entry.model);
     });
-    return Array.from(models).sort();
+    const result = Array.from(models).sort();
+    console.log("StockData: Available models:", result);
+    console.log("StockData: All models in data:", database.map(entry => ({
+      imei: entry.imei,
+      model: entry.model
+    })));
+    return result;
   }, [database]);
 
   const availableBrands = useMemo(() => {
@@ -95,25 +178,37 @@ const StockData = () => {
     database.forEach(entry => {
       if (entry.brand) brands.add(entry.brand);
     });
-    return Array.from(brands).sort();
+    const result = Array.from(brands).sort();
+    console.log("StockData: Available brands:", result);
+    console.log("StockData: All brands in data:", database.map(entry => ({
+      imei: entry.imei,
+      brand: entry.brand
+    })));
+    return result;
   }, [database]);
 
-  const availableUsernames = useMemo(() => {
-    const usernames = new Set<string>();
+  const availableBookingPersons = useMemo(() => {
+    const bookingPersons = new Set<string>();
     database.forEach(entry => {
-      if (entry.bookingPerson) usernames.add(entry.bookingPerson);
+      if (entry.bookingPerson) bookingPersons.add(entry.bookingPerson);
     });
-    return Array.from(usernames).sort();
+    const result = Array.from(bookingPersons).sort();
+    console.log("StockData: Available booking persons:", result);
+    console.log("StockData: All booking persons in data:", database.map(entry => ({
+      imei: entry.imei,
+      bookingPerson: entry.bookingPerson
+    })));
+    return result;
   }, [database]);
 
   const clearFilters = () => {
     setSelectedModel("all");
     setSelectedBrand("all");
-    setSelectedUsername("all");
+    setSelectedBookingPerson("all");
     // Clear localStorage as well
     localStorage.removeItem('stockData_selectedModel');
     localStorage.removeItem('stockData_selectedBrand');
-    localStorage.removeItem('stockData_selectedUsername');
+    localStorage.removeItem('stockData_selectedBookingPerson');
   };
 
   if (isLoadingData) {
@@ -145,7 +240,20 @@ const StockData = () => {
           <CardTitle className="uppercase text-center">Stock Data</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-6">
-          <div className="font-bold">Total Unit Stock: {totalUnitStock}</div>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="bg-green-100 p-3 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">{totalUnitStock}</div>
+              <div className="text-sm text-green-700">In Stock</div>
+            </div>
+            <div className="bg-red-100 p-3 rounded-lg">
+              <div className="text-2xl font-bold text-red-600">{totalSoldStock}</div>
+              <div className="text-sm text-red-700">Sold</div>
+            </div>
+            <div className="bg-blue-100 p-3 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">{totalItems}</div>
+              <div className="text-sm text-blue-700">Total Items</div>
+            </div>
+          </div>
 
           <div className="grid gap-4">
             <div className="flex items-center justify-between">
@@ -181,14 +289,14 @@ const StockData = () => {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="username-filter">Filter by Username</Label>
+                <Label htmlFor="username-filter">Filter by Booking Person</Label>
                 <SearchableSelect
-                  value={selectedUsername}
-                  onValueChange={setSelectedUsername}
-                  options={availableUsernames}
-                  placeholder="Select username"
-                  searchPlaceholder="Search usernames..."
-                  emptyText="No usernames found."
+                  value={selectedBookingPerson}
+                  onValueChange={setSelectedBookingPerson}
+                  options={availableBookingPersons}
+                  placeholder="Select booking person"
+                  searchPlaceholder="Search booking persons..."
+                  emptyText="No booking persons found."
                 />
               </div>
             </div>
@@ -196,8 +304,8 @@ const StockData = () => {
 
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xl font-semibold">In-Stock Details</h3>
-              {(selectedModel !== "all" || selectedBrand !== "all" || selectedUsername !== "all") && (
+              <h3 className="text-xl font-semibold">Inventory Details</h3>
+              {(selectedModel !== "all" || selectedBrand !== "all" || selectedBookingPerson !== "all") && (
                 <div className="text-sm text-muted-foreground">
                   Showing {filteredStock.length} items
                 </div>
@@ -205,15 +313,108 @@ const StockData = () => {
             </div>
             {filteredStock.length > 0 ? (
               <ul className="grid gap-2">
-                {filteredStock.map((item, index) => (
-                  <li key={index} className="flex justify-between items-center p-2 border rounded-md">
-                    <span className="font-medium">{item.model}</span>
-                    <span className="text-muted-foreground">Stock: {item.stock}</span>
-                  </li>
-                ))}
+                {filteredStock.map((item, index) => {
+                  const isExpanded = expandedItems.has(item.model);
+                  const modelEntries = filteredEntries.filter(entry => entry.model === item.model);
+                  
+                  return (
+                    <li key={index} className="border rounded-md">
+                      <div 
+                        className="p-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                        onClick={() => toggleExpanded(item.model)}
+                      >
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                            <span className="font-medium">{item.model}</span>
+                          </div>
+                          <div className="flex gap-4 text-sm">
+                            <span className="text-green-600 font-medium">
+                              In Stock: {item.inStock}
+                            </span>
+                            <span className="text-red-600 font-medium">
+                              Sold: {item.sold}
+                            </span>
+                            <span className="text-blue-600 font-medium">
+                              Total: {item.total}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {isExpanded && (
+                        <div className="border-t bg-gray-50 p-4">
+                          <h4 className="font-semibold mb-3 text-gray-700">Entry Details</h4>
+                          <div className="grid gap-3">
+                            {modelEntries.map((entry, entryIndex) => (
+                              <div key={entryIndex} className="bg-white p-3 rounded border">
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <span className="font-medium text-gray-600">IMEI:</span>
+                                    <span className="ml-2">{entry.imei}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Brand:</span>
+                                    <span className="ml-2">{entry.brand || 'N/A'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Seller:</span>
+                                    <span className="ml-2">{entry.seller || 'N/A'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Booking Person:</span>
+                                    <span className="ml-2">{entry.bookingPerson || 'N/A'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Inward Date:</span>
+                                    <span className="ml-2">
+                                      {entry.inwardDate ? new Date(entry.inwardDate).toLocaleDateString() : 'N/A'}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Inward Amount:</span>
+                                    <span className="ml-2">{entry.inwardAmount || 'N/A'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Outward Date:</span>
+                                    <span className="ml-2">
+                                      {entry.outwardDate ? new Date(entry.outwardDate).toLocaleDateString() : 'N/A'}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Outward Amount:</span>
+                                    <span className="ml-2">{entry.outwardAmount || 'N/A'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Buyer:</span>
+                                    <span className="ml-2">{entry.buyer || 'N/A'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Status:</span>
+                                    <span className={`ml-2 px-2 py-1 rounded text-xs font-medium ${
+                                      entry.outwardDate 
+                                        ? 'bg-red-100 text-red-800' 
+                                        : 'bg-green-100 text-green-800'
+                                    }`}>
+                                      {entry.outwardDate ? 'Sold' : 'In Stock'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
-              <p className="text-muted-foreground">No stock items found matching your filters.</p>
+              <p className="text-muted-foreground">No items found matching your filters.</p>
             )}
           </div>
         </CardContent>

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, ReactNode, useState, useEffect } from "react";
-import { User, Session, AuthError } from "@supabase/supabase-js";
+import { createContext, useContext, ReactNode, useState, useEffect } from "react";
+import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { showSuccess, showError } from "@/utils/toast";
 
@@ -12,7 +12,7 @@ interface AuthContextType {
   isAdmin: boolean;
   userRole: string | null;
   signUp: (email: string, password: string, username: string) => Promise<{ success: boolean; error?: string }>;
-  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signIn: (usernameOrEmail: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
 }
@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
@@ -135,10 +135,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signIn = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const signIn = async (usernameOrEmail: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       setLoading(true);
-      console.log("AuthContext: Attempting sign in for:", email);
+      console.log("AuthContext: Attempting sign in for:", usernameOrEmail);
+      
+      // Check if input is an email (contains @) or username
+      let email = usernameOrEmail;
+      
+      if (!usernameOrEmail.includes('@')) {
+        // It's a username, look up the email
+        console.log("AuthContext: Looking up email for username:", usernameOrEmail);
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('username', usernameOrEmail)
+          .single();
+
+        if (profileError || !profileData?.email) {
+          console.log("AuthContext: Username not found:", profileError);
+          return { success: false, error: "Username not found" };
+        }
+        
+        email = profileData.email;
+        console.log("AuthContext: Found email for username:", email);
+      }
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
