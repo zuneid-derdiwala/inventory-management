@@ -13,6 +13,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 const StockData = () => {
   const { database, isLoadingData } = useData();
   
+  
   // Initialize state from localStorage or defaults
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     return localStorage.getItem('stockData_selectedModel') || "all";
@@ -53,13 +54,18 @@ const StockData = () => {
     localStorage.setItem('stockData_selectedBookingPerson', selectedBookingPerson);
   }, [selectedBookingPerson]);
 
+
+
+  // Always use user-specific data for Stock Data page (both admin and regular users)
+  const dataSource = database;
+
   // First filter the database entries based on the selected filters
   const filteredEntries = useMemo(() => {
-    console.log("StockData: Total database entries:", database.length);
-    console.log("StockData: Database entries:", database);
+    console.log("StockData: Total database entries:", dataSource.length);
+    console.log("StockData: Database entries:", dataSource);
     console.log("StockData: Selected filters:", { selectedModel, selectedBrand, selectedBookingPerson });
     
-    return database.filter(entry => {
+    return dataSource.filter(entry => {
       // Only require basic entry data (IMEI and model)
       if (!entry.imei || !entry.model) {
         console.log("StockData: Filtering out entry (missing basic data):", entry.imei, {
@@ -112,7 +118,7 @@ const StockData = () => {
       });
       return true;
     });
-  }, [database, selectedModel, selectedBrand, selectedBookingPerson]);
+  }, [dataSource, selectedModel, selectedBrand, selectedBookingPerson]);
 
   // Debug the filtered entries
   useEffect(() => {
@@ -120,7 +126,7 @@ const StockData = () => {
     console.log("StockData: Filtered entries:", filteredEntries);
   }, [filteredEntries]);
 
-  // Calculate stock from filtered entries
+  // Calculate stock from filtered entries - show ALL data including sold items
   const inStockItems = useMemo(() => {
     const modelStockMap = new Map<string, { inStock: number; sold: number; total: number }>();
 
@@ -143,6 +149,7 @@ const StockData = () => {
       }
     });
 
+    // Return all models with their complete statistics
     return Array.from(modelStockMap.entries()).map(([model, stock]) => ({ 
       model, 
       inStock: stock.inStock,
@@ -151,55 +158,103 @@ const StockData = () => {
     }));
   }, [filteredEntries]);
 
-  const totalUnitStock = inStockItems.reduce((sum, item) => sum + item.inStock, 0);
-  const totalSoldStock = inStockItems.reduce((sum, item) => sum + item.sold, 0);
-  const totalItems = inStockItems.reduce((sum, item) => sum + item.total, 0);
+  // Filter for display - only show models with in-stock items in Inventory Details
+  const displayItems = useMemo(() => {
+    return inStockItems.filter(item => item.inStock > 0);
+  }, [inStockItems]);
 
-  // For display purposes, we can use inStockItems directly since it's already filtered
-  const filteredStock = inStockItems;
+  // Calculate user-specific summary (for both admin and regular users)
+  const totalUnitStock = useMemo(() => {
+    return dataSource.reduce((sum, entry) => {
+      // Count items that are in stock (have inward date but no outward date)
+      if (entry.inwardDate && !entry.outwardDate) {
+        return sum + 1;
+      }
+      return sum;
+    }, 0);
+  }, [dataSource]);
+
+  const totalSoldStock = useMemo(() => {
+    return dataSource.reduce((sum, entry) => {
+      // Count items that are sold (have both inward and outward date)
+      if (entry.inwardDate && entry.outwardDate) {
+        return sum + 1;
+      }
+      return sum;
+    }, 0);
+  }, [dataSource]);
+
+  const totalItems = useMemo(() => {
+    return dataSource.reduce((sum, entry) => {
+      // Count all items that have inward date
+      if (entry.inwardDate) {
+        return sum + 1;
+      }
+      return sum;
+    }, 0);
+  }, [dataSource]);
+
+  // For display purposes, use displayItems which only shows in-stock items
+  const filteredStock = displayItems;
 
   // Get unique options for filters
   const availableModels = useMemo(() => {
     const models = new Set<string>();
-    database.forEach(entry => {
-      if (entry.model) models.add(entry.model);
+    dataSource.forEach(entry => {
+      // If a brand is selected, only show models from that brand
+      if (entry.model && (selectedBrand === "all" || entry.brand === selectedBrand)) {
+        models.add(entry.model);
+      }
     });
     const result = Array.from(models).sort();
-    console.log("StockData: Available models:", result);
-    console.log("StockData: All models in data:", database.map(entry => ({
+    console.log("StockData: Available models for brand", selectedBrand, ":", result);
+    console.log("StockData: All models in data:", dataSource.map(entry => ({
       imei: entry.imei,
-      model: entry.model
+      model: entry.model,
+      brand: entry.brand
     })));
     return result;
-  }, [database]);
+  }, [dataSource, selectedBrand]);
 
   const availableBrands = useMemo(() => {
     const brands = new Set<string>();
-    database.forEach(entry => {
+    dataSource.forEach(entry => {
       if (entry.brand) brands.add(entry.brand);
     });
     const result = Array.from(brands).sort();
     console.log("StockData: Available brands:", result);
-    console.log("StockData: All brands in data:", database.map(entry => ({
+    console.log("StockData: All brands in data:", dataSource.map(entry => ({
       imei: entry.imei,
       brand: entry.brand
     })));
     return result;
-  }, [database]);
+  }, [dataSource]);
 
   const availableBookingPersons = useMemo(() => {
     const bookingPersons = new Set<string>();
-    database.forEach(entry => {
+    dataSource.forEach(entry => {
       if (entry.bookingPerson) bookingPersons.add(entry.bookingPerson);
     });
     const result = Array.from(bookingPersons).sort();
     console.log("StockData: Available booking persons:", result);
-    console.log("StockData: All booking persons in data:", database.map(entry => ({
+    console.log("StockData: All booking persons in data:", dataSource.map(entry => ({
       imei: entry.imei,
       bookingPerson: entry.bookingPerson
     })));
     return result;
-  }, [database]);
+  }, [dataSource]);
+
+  // Clear model selection when brand changes
+  useEffect(() => {
+    if (selectedBrand !== "all") {
+      // Check if the currently selected model is available for the selected brand
+      const isModelAvailable = availableModels.includes(selectedModel);
+      if (!isModelAvailable && selectedModel !== "all") {
+        console.log("StockData: Model", selectedModel, "not available for brand", selectedBrand, ", clearing model selection");
+        setSelectedModel("all");
+      }
+    }
+  }, [selectedBrand, availableModels, selectedModel]);
 
   const clearFilters = () => {
     setSelectedModel("all");
@@ -265,18 +320,6 @@ const StockData = () => {
             
             <div className="grid gap-4 md:grid-cols-3">
               <div className="grid gap-2">
-                <Label htmlFor="model-filter">Filter by Model</Label>
-                <SearchableSelect
-                  value={selectedModel}
-                  onValueChange={setSelectedModel}
-                  options={availableModels}
-                  placeholder="Select model"
-                  searchPlaceholder="Search models..."
-                  emptyText="No models found."
-                />
-              </div>
-
-              <div className="grid gap-2">
                 <Label htmlFor="brand-filter">Filter by Brand</Label>
                 <SearchableSelect
                   value={selectedBrand}
@@ -285,6 +328,18 @@ const StockData = () => {
                   placeholder="Select brand"
                   searchPlaceholder="Search brands..."
                   emptyText="No brands found."
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="model-filter">Filter by Model</Label>
+                <SearchableSelect
+                  value={selectedModel}
+                  onValueChange={setSelectedModel}
+                  options={availableModels}
+                  placeholder="Select model"
+                  searchPlaceholder="Search models..."
+                  emptyText="No models found."
                 />
               </div>
 
@@ -315,7 +370,11 @@ const StockData = () => {
               <ul className="grid gap-2">
                 {filteredStock.map((item, index) => {
                   const isExpanded = expandedItems.has(item.model);
-                  const modelEntries = filteredEntries.filter(entry => entry.model === item.model);
+                  const modelEntries = filteredEntries.filter(entry => 
+                    entry.model === item.model && 
+                    entry.inwardDate && 
+                    !entry.outwardDate // Only show in-stock items
+                  );
                   
                   return (
                     <li key={index} className="border rounded-md">
@@ -335,12 +394,6 @@ const StockData = () => {
                           <div className="flex gap-4 text-sm">
                             <span className="text-green-600 font-medium">
                               In Stock: {item.inStock}
-                            </span>
-                            <span className="text-red-600 font-medium">
-                              Sold: {item.sold}
-                            </span>
-                            <span className="text-blue-600 font-medium">
-                              Total: {item.total}
                             </span>
                           </div>
                         </div>
@@ -392,16 +445,6 @@ const StockData = () => {
                                   <div>
                                     <span className="font-medium text-gray-600">Buyer:</span>
                                     <span className="ml-2">{entry.buyer || 'N/A'}</span>
-                                  </div>
-                                  <div>
-                                    <span className="font-medium text-gray-600">Status:</span>
-                                    <span className={`ml-2 px-2 py-1 rounded text-xs font-medium ${
-                                      entry.outwardDate 
-                                        ? 'bg-red-100 text-red-800' 
-                                        : 'bg-green-100 text-green-800'
-                                    }`}>
-                                      {entry.outwardDate ? 'Sold' : 'In Stock'}
-                                    </span>
                                   </div>
                                 </div>
                               </div>

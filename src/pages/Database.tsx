@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,11 +18,17 @@ import { Separator } from "@/components/ui/separator"; // Import Separator
 import DataImporter from "@/components/DataImporter"; // Import DataImporter
 import DataExporter from "@/components/DataExporter"; // Import DataExporter
 import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
+import { supabase } from "@/lib/supabase";
+import { EntryData } from "@/context/DataContext";
 
 const Database = () => {
   const { database, deleteEntry, availableBrands, availableModels, availableBookingPersons, isLoadingData } = useData();
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
+
+  // State for all data (for admin users)
+  const [allData, setAllData] = useState<EntryData[]>([]);
+  const [isLoadingAllData, setIsLoadingAllData] = useState(false);
 
   // States for input fields
   const [searchQuery1, setSearchQuery1] = useState("");
@@ -39,6 +45,53 @@ const Database = () => {
   const [open2, setOpen2] = useState(false);
   const [open3, setOpen3] = useState(false);
 
+  // Fetch all data for admin users
+  useEffect(() => {
+    const fetchAllData = async () => {
+      if (!isAdmin) {
+        setAllData([]);
+        return;
+      }
+
+      setIsLoadingAllData(true);
+      try {
+        const { data, error } = await supabase
+          .from("entries")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("Error fetching all data:", error);
+          setAllData([]);
+          return;
+        }
+
+        // Convert Supabase data to EntryData format
+        const convertedData: EntryData[] = (data || []).map((entry: any) => ({
+          imei: entry.imei || "",
+          brand: entry.brand || undefined,
+          model: entry.model || undefined,
+          seller: entry.seller || undefined,
+          bookingPerson: entry.booking_person || undefined,
+          inwardDate: entry.inward_date ? new Date(entry.inward_date) : undefined,
+          inwardAmount: entry.inward_amount || undefined,
+          buyer: entry.buyer || undefined,
+          outwardDate: entry.outward_date ? new Date(entry.outward_date) : undefined,
+          outwardAmount: entry.outward_amount || undefined,
+        }));
+
+        setAllData(convertedData);
+      } catch (error) {
+        console.error("Error fetching all data:", error);
+        setAllData([]);
+      } finally {
+        setIsLoadingAllData(false);
+      }
+    };
+
+    fetchAllData();
+  }, [isAdmin]);
+
 
   const handleSearch = () => {
     setActiveSearchQuery1(searchQuery1);
@@ -46,7 +99,10 @@ const Database = () => {
     setActiveSearchQuery3(searchQuery3);
   };
 
-  const filteredData = database.filter(entry => {
+  // Use appropriate data source based on user role
+  const dataSource = isAdmin ? allData : database;
+
+  const filteredData = dataSource.filter(entry => {
     const q1 = activeSearchQuery1.toLowerCase();
     const q2 = activeSearchQuery2.toLowerCase();
     const q3 = activeSearchQuery3.toLowerCase();
@@ -72,6 +128,39 @@ const Database = () => {
 
     return matchesQ1 && matchesQ2 && matchesQ3;
   });
+
+  // Calculate summary based on user role
+  // For admin: show overall data (all users)
+  // For regular users: show user-specific data (already filtered in use-entries hook)
+  const totalUnitStock = useMemo(() => {
+    return dataSource.reduce((sum, entry) => {
+      // Count items that are in stock (have inward date but no outward date)
+      if (entry.inwardDate && !entry.outwardDate) {
+        return sum + 1;
+      }
+      return sum;
+    }, 0);
+  }, [dataSource]);
+
+  const totalSoldStock = useMemo(() => {
+    return dataSource.reduce((sum, entry) => {
+      // Count items that are sold (have both inward and outward date)
+      if (entry.inwardDate && entry.outwardDate) {
+        return sum + 1;
+      }
+      return sum;
+    }, 0);
+  }, [dataSource]);
+
+  const totalItems = useMemo(() => {
+    return dataSource.reduce((sum, entry) => {
+      // Count all items that have inward date
+      if (entry.inwardDate) {
+        return sum + 1;
+      }
+      return sum;
+    }, 0);
+  }, [dataSource]);
 
   const handleEdit = (imei: string) => {
     navigate(`/entry-form?imei=${imei}`);
@@ -114,7 +203,7 @@ const Database = () => {
     return Array.from(suggestions).filter(s => s.toLowerCase().includes(query)).sort();
   }, [database, availableBookingPersons, searchQuery3]);
 
-  if (isLoadingData) {
+  if (isLoadingData || (isAdmin && isLoadingAllData)) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card className="col-span-full">
@@ -151,6 +240,20 @@ const Database = () => {
           <CardTitle className="uppercase text-center">All Data Entries</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-6">
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="bg-green-100 p-3 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">{totalUnitStock}</div>
+              <div className="text-sm text-green-700">In Stock</div>
+            </div>
+            <div className="bg-red-100 p-3 rounded-lg">
+              <div className="text-2xl font-bold text-red-600">{totalSoldStock}</div>
+              <div className="text-sm text-red-700">Sold</div>
+            </div>
+            <div className="bg-blue-100 p-3 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">{totalItems}</div>
+              <div className="text-sm text-blue-700">Total Items</div>
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="grid gap-2">
               <Label htmlFor="search1">Search by IMEI, Date</Label>
