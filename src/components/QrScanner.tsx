@@ -5,10 +5,42 @@ import { Html5QrcodeScanner, Html5QrcodeScanType, Html5Qrcode, Html5QrcodeSuppor
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Camera, Upload, Image } from "lucide-react";
 import jsQR from "jsqr";
+import { createWorker } from 'tesseract.js';
 
 // IMEI and mobile number extraction utilities
 const IMEI_REGEX = /(?:\b|[^0-9])([0-9]{15})(?:\b|[^0-9])/g;
 const MOBILE_REGEX = /(?:\b|[^0-9])([0-9]{10,15})(?:\b|[^0-9])/g;
+
+// OCR-based IMEI extraction from images
+async function extractIMEIsFromImage(canvas: HTMLCanvasElement): Promise<string[]> {
+  console.log("Starting OCR-based IMEI extraction...");
+  
+  try {
+    // Create Tesseract worker
+    const worker = await createWorker('eng');
+    
+    // Configure for better number recognition
+    await worker.setParameters({
+      tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz: ',
+    });
+    
+    // Perform OCR on the canvas
+    const { data: { text } } = await worker.recognize(canvas);
+    console.log("OCR extracted text:", text);
+    
+    // Extract IMEI numbers from the OCR text
+    const imeis = extractIMEIsFromText(text);
+    console.log("IMEIs found via OCR:", imeis);
+    
+    // Clean up worker
+    await worker.terminate();
+    
+    return imeis;
+  } catch (error) {
+    console.error("OCR extraction failed:", error);
+    return [];
+  }
+}
 
 // Enhanced IMEI extraction for phone packaging
 function extractIMEIsFromText(text: string): string[] {
@@ -16,21 +48,52 @@ function extractIMEIsFromText(text: string): string[] {
   let match;
   IMEI_REGEX.lastIndex = 0;
   
+  console.log("Extracting IMEIs from text:", text.substring(0, 200) + "...");
+  
   // First, try to find IMEI1 specifically (common in phone packaging)
   const imei1Match = text.match(/IMEI\s*1?\s*:?\s*([0-9]{15})/i);
   if (imei1Match) {
+    console.log("Found IMEI1:", imei1Match[1]);
     results.push(imei1Match[1]);
   }
   
-  // Then find all other IMEI numbers
+  // Then find IMEI2 specifically
+  const imei2Match = text.match(/IMEI\s*2?\s*:?\s*([0-9]{15})/i);
+  if (imei2Match) {
+    console.log("Found IMEI2:", imei2Match[1]);
+    results.push(imei2Match[1]);
+  }
+  
+  // Also try to find IMEI/MEID pattern (common on iPhone boxes)
+  const imeiMeidMatch = text.match(/IMEI\/MEID\s*:?\s*([0-9]{15})/i);
+  if (imeiMeidMatch) {
+    console.log("Found IMEI/MEID:", imeiMeidMatch[1]);
+    results.push(imeiMeidMatch[1]);
+  }
+  
+  // Finally, find any other 15-digit numbers that look like IMEIs
+  // but exclude common product barcodes (like 6932204509475)
   while ((match = IMEI_REGEX.exec(text)) !== null) {
     const imei = match[1];
-    // Don't add IMEI1 again if we already found it
-    if (!results.includes(imei)) {
+    // Skip if it's already in results
+    if (results.includes(imei)) continue;
+    
+    // Skip common product barcodes that aren't IMEIs
+    if (imei.startsWith('693') || imei.startsWith('690') || imei.startsWith('691') || 
+        imei.startsWith('692') || imei.startsWith('694') || imei.startsWith('695') ||
+        imei === '6932204509475' || imei === '693220450947') {
+      console.log("Skipping product barcode:", imei);
+      continue;
+    }
+    
+    // Only add if it looks like a real IMEI (starts with 8 or 3)
+    if (imei.startsWith('8') || imei.startsWith('3')) {
+      console.log("Found potential IMEI:", imei);
       results.push(imei);
     }
   }
   
+  console.log("All IMEIs found:", results);
   return results;
 }
 
@@ -359,8 +422,14 @@ const QrScanner: React.FC<QrScannerProps> = ({
                 const html5Qrcode = new Html5Qrcode("temp-scanner");
                 const result = await html5Qrcode.scanFile(imageFile, true);
                 if (result) {
-                  detectedText = result;
-                  console.log("Html5Qrcode detected barcode:", result);
+                  // Only accept if it's a valid IMEI number (15 digits starting with 8 or 3)
+                  if (result.length === 15 && (result.startsWith('8') || result.startsWith('3')) && imeiIsValid(result)) {
+                    detectedText = result;
+                    console.log("Html5Qrcode detected valid IMEI:", result);
+                  } else {
+                    console.log("Html5Qrcode detected non-IMEI barcode, ignoring:", result);
+                    detectedText = null; // Don't use this result
+                  }
                 }
                 
                 // Clean up the temporary container
@@ -374,24 +443,23 @@ const QrScanner: React.FC<QrScannerProps> = ({
                 }
               }
               
-              // Method 2: Direct IMEI extraction from image (for phone packaging)
+              // Method 2: OCR-based IMEI extraction from image (for phone packaging)
               if (!detectedText) {
-                console.log("Trying direct IMEI extraction from image...");
+                console.log("Trying OCR-based IMEI extraction from image...");
                 try {
-                  // Convert image to data URL and look for IMEI patterns
-                  const imageDataUrl = canvas.toDataURL('image/png');
-                  const imeiPatterns = extractIMEIsFromText(imageDataUrl);
+                  // Use Tesseract.js for proper text extraction
+                  const imeiPatterns = await extractIMEIsFromImage(canvas);
                   
                   if (imeiPatterns.length > 0) {
                     // Prioritize the first IMEI (IMEI1)
                     const firstImei = imeiPatterns[0];
                     const validImei = imeiIsValid(firstImei) ? firstImei : imeiPatterns.find(imei => imeiIsValid(imei)) || firstImei;
                     detectedText = validImei;
-                    console.log("Direct IMEI extraction found:", validImei);
-                    console.log("All IMEIs found:", imeiPatterns);
+                    console.log("OCR-based IMEI extraction found:", validImei);
+                    console.log("All IMEIs found via OCR:", imeiPatterns);
                   }
                 } catch (extractionError) {
-                  console.log("Direct IMEI extraction failed:", extractionError);
+                  console.log("OCR-based IMEI extraction failed:", extractionError);
                 }
               }
               
@@ -465,8 +533,13 @@ const QrScanner: React.FC<QrScannerProps> = ({
                       const html5Qrcode = new Html5Qrcode("temp-scanner-enhanced");
                       const enhancedResult = await html5Qrcode.scanFile(imageFile, true);
                       if (enhancedResult) {
-                        detectedText = enhancedResult;
-                        console.log("Html5Qrcode detected barcode on enhanced image:", enhancedResult);
+                        // Only accept if it's a valid IMEI number (15 digits starting with 8 or 3)
+                        if (enhancedResult.length === 15 && (enhancedResult.startsWith('8') || enhancedResult.startsWith('3')) && imeiIsValid(enhancedResult)) {
+                          detectedText = enhancedResult;
+                          console.log("Html5Qrcode detected valid IMEI on enhanced image:", enhancedResult);
+                        } else {
+                          console.log("Enhanced processing detected non-IMEI barcode, ignoring:", enhancedResult);
+                        }
                       }
                       
                       // Clean up the temporary container
@@ -525,15 +598,34 @@ const QrScanner: React.FC<QrScannerProps> = ({
                       });
                       const imageFile = new File([blob], 'resized-image.png', { type: 'image/png' });
                       
-                      const html5Qrcode = new Html5Qrcode("temp-scanner");
+                      // Create a temporary container for Html5Qrcode
+                      const tempContainer = document.createElement('div');
+                      tempContainer.id = 'temp-scanner-resized';
+                      tempContainer.style.display = 'none';
+                      document.body.appendChild(tempContainer);
+                      
+                      const html5Qrcode = new Html5Qrcode("temp-scanner-resized");
                       const resizedResult = await html5Qrcode.scanFile(imageFile, true);
                       if (resizedResult) {
-                        detectedText = resizedResult;
-                        console.log("Html5Qrcode detected barcode on resized image:", resizedResult);
+                        // Only accept if it's a valid IMEI number (15 digits starting with 8 or 3)
+                        if (resizedResult.length === 15 && (resizedResult.startsWith('8') || resizedResult.startsWith('3')) && imeiIsValid(resizedResult)) {
+                          detectedText = resizedResult;
+                          console.log("Html5Qrcode detected valid IMEI on resized image:", resizedResult);
+                        } else {
+                          console.log("Resized processing detected non-IMEI barcode, ignoring:", resizedResult);
+                        }
                       }
+                      
+                      // Clean up the temporary container
+                      document.body.removeChild(tempContainer);
                     }
                   } catch (html5Error) {
                     console.log("Html5Qrcode on resized image failed:", html5Error);
+                    // Clean up the temporary container if it exists
+                    const tempContainer = document.getElementById('temp-scanner-resized');
+                    if (tempContainer) {
+                      document.body.removeChild(tempContainer);
+                    }
                   }
                   
                   // Fallback to QR detection on resized image
@@ -604,15 +696,34 @@ const QrScanner: React.FC<QrScannerProps> = ({
                       });
                       const imageFile = new File([blob], 'processed-image.png', { type: 'image/png' });
                       
-                      const html5Qrcode = new Html5Qrcode("temp-scanner");
+                      // Create a temporary container for Html5Qrcode
+                      const tempContainer = document.createElement('div');
+                      tempContainer.id = 'temp-scanner-ocr';
+                      tempContainer.style.display = 'none';
+                      document.body.appendChild(tempContainer);
+                      
+                      const html5Qrcode = new Html5Qrcode("temp-scanner-ocr");
                       const ocrResult = await html5Qrcode.scanFile(imageFile, true);
                       if (ocrResult) {
-                        detectedText = ocrResult;
-                        console.log("Html5Qrcode detected barcode on OCR processed image:", ocrResult);
+                        // Only accept if it's a valid IMEI number (15 digits starting with 8 or 3)
+                        if (ocrResult.length === 15 && (ocrResult.startsWith('8') || ocrResult.startsWith('3')) && imeiIsValid(ocrResult)) {
+                          detectedText = ocrResult;
+                          console.log("Html5Qrcode detected valid IMEI on OCR processed image:", ocrResult);
+                        } else {
+                          console.log("OCR processing detected non-IMEI barcode, ignoring:", ocrResult);
+                        }
                       }
+                      
+                      // Clean up the temporary container
+                      document.body.removeChild(tempContainer);
                     }
                   } catch (html5Error) {
                     console.log("Html5Qrcode on OCR processed image failed:", html5Error);
+                    // Clean up the temporary container if it exists
+                    const tempContainer = document.getElementById('temp-scanner-ocr');
+                    if (tempContainer) {
+                      document.body.removeChild(tempContainer);
+                    }
                   }
                   
                   // Fallback to QR detection on processed image
@@ -631,6 +742,13 @@ const QrScanner: React.FC<QrScannerProps> = ({
               if (detectedText) {
                 console.log("Barcode/QR code detected:", detectedText);
                 
+                // Final validation: Only accept if it's a valid IMEI number
+                if (detectedText.length === 15 && (detectedText.startsWith('8') || detectedText.startsWith('3')) && imeiIsValid(detectedText)) {
+                  console.log("Valid IMEI detected:", detectedText);
+                  resolve(detectedText);
+                  return;
+                }
+                
                 // Extract both IMEI and mobile numbers from QR code text
                 const { imeis, mobiles } = extractNumbersFromText(detectedText);
                 if (imeis.length > 0) {
@@ -640,6 +758,12 @@ const QrScanner: React.FC<QrScannerProps> = ({
                   const validImei = imeiIsValid(firstImei) ? firstImei : imeis.find(imei => imeiIsValid(imei)) || firstImei;
                   console.log("IMEI extracted (prioritizing first):", validImei);
                   console.log("All IMEIs found:", imeis);
+                  console.log("IMEI validation details:", {
+                    firstImei: firstImei,
+                    isValid: imeiIsValid(firstImei),
+                    validImei: validImei,
+                    allImeis: imeis
+                  });
                   resolve(validImei);
                 } else if (mobiles.length > 0) {
                   // Use the first mobile number found
@@ -684,6 +808,23 @@ const QrScanner: React.FC<QrScannerProps> = ({
                 
                 // Final fallback: Try to extract IMEI from image filename or provide manual input option
                 console.log("Attempting fallback IMEI extraction methods...");
+                
+                // Try OCR-based extraction as final fallback
+                console.log("Trying OCR-based comprehensive IMEI extraction...");
+                try {
+                  const comprehensiveImeis = await extractIMEIsFromImage(canvas);
+                  
+                  if (comprehensiveImeis.length > 0) {
+                    console.log("Found IMEI in OCR comprehensive extraction:", comprehensiveImeis);
+                    const firstImei = comprehensiveImeis[0];
+                    const validImei = imeiIsValid(firstImei) ? firstImei : comprehensiveImeis.find(imei => imeiIsValid(imei)) || firstImei;
+                    console.log("Using IMEI from OCR comprehensive extraction:", validImei);
+                    resolve(validImei);
+                    return;
+                  }
+                } catch (ocrError) {
+                  console.log("OCR comprehensive extraction failed:", ocrError);
+                }
                 
                 // Check if filename contains IMEI-like numbers
                 const filename = file.name;
