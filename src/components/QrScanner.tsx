@@ -1069,7 +1069,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
     // Universal configuration that works across all browsers
     const baseConfig = {
           fps: 10,
-          qrbox: { width: 250, height: 250 },
+          qrbox: { width: 300, height: 300 }, // Increased size for better mobile scanning
           disableFlip: false,
       aspectRatio: 1.0,
       showTorchButtonIfSupported: true,
@@ -1132,7 +1132,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
       return {
         ...baseConfig,
         fps: 5, // Lower FPS for iOS stability
-        qrbox: { width: 200, height: 200 }, // Smaller QR box for mobile
+        qrbox: { width: 350, height: 350 }, // Larger QR box for better mobile scanning
         showTorchButtonIfSupported: false, // iOS Safari has issues with torch
         showZoomSliderIfSupported: false, // iOS Safari has issues with zoom
         useBarCodeDetectorIfSupported: false, // Disable for iOS compatibility
@@ -1145,7 +1145,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
       return {
         ...baseConfig,
         fps: 8, // Moderate FPS for mobile
-        qrbox: { width: 200, height: 200 }, // Smaller QR box for mobile
+        qrbox: { width: 350, height: 350 }, // Larger QR box for better mobile scanning
         aspectRatio: 1.0, // Square aspect ratio for mobile
       };
     }
@@ -1227,12 +1227,12 @@ const QrScanner: React.FC<QrScannerProps> = ({
         finalCameraId,
         {
           fps: 10,
-          qrbox: { width: 250, height: 250 },
-          // Desktop-optimized constraints
+          qrbox: { width: 350, height: 350 }, // Larger scanning area for mobile
+          // Mobile-optimized constraints
           videoConstraints: {
             facingMode: "environment", // Prefer back camera
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: 1920, min: 1280 }, // Higher resolution for better scanning
+            height: { ideal: 1080, min: 720 }
           }
         },
         (decodedText) => {
@@ -1486,6 +1486,17 @@ const QrScanner: React.FC<QrScannerProps> = ({
                 <li><strong>iPhone/iPad:</strong> Try restarting Safari completely</li>
                 <li><strong>iPhone/iPad:</strong> Check if you're on iOS 14+ (older versions have limited support)</li>
                 <li><strong>iPhone/iPad:</strong> Try using the manual input option below</li>
+                <li><strong>iPhone/iPad:</strong> Hold phone steady and ensure good lighting</li>
+                <li><strong>iPhone/iPad:</strong> Try moving closer to the barcode for better focus</li>
+              </>
+            )}
+            {getBrowserInfo().isMobile && !getBrowserInfo().isIOS && (
+              <>
+                <li><strong>Android:</strong> Make sure you're using Chrome or Firefox</li>
+                <li><strong>Android:</strong> Allow camera permissions when prompted</li>
+                <li><strong>Android:</strong> Try using the manual input option below</li>
+                <li><strong>Android:</strong> Hold phone steady and ensure good lighting</li>
+                <li><strong>Android:</strong> Try moving closer to the barcode for better focus</li>
               </>
             )}
           </ul>
@@ -1824,6 +1835,8 @@ const QrScanner: React.FC<QrScannerProps> = ({
                     <p>• Scan the barcode next to "IMEI1:" only</p>
                     <p>• Ignore IMEI2 or other barcodes</p>
                     <p>• Make sure the barcode is clearly visible</p>
+                    <p>• <strong>Mobile tip:</strong> Hold phone steady and get close to the barcode</p>
+                    <p>• <strong>Lighting:</strong> Ensure good lighting on the barcode</p>
                   </div>
                 </div>
                 
