@@ -208,27 +208,25 @@ const StockData = () => {
     });
     const result = Array.from(models).sort();
     console.log("StockData: Available models for brand", selectedBrand, ":", result);
-    console.log("StockData: All models in data:", dataSource.map(entry => ({
-      imei: entry.imei,
-      model: entry.model,
-      brand: entry.brand
-    })));
+    console.log("StockData: Total entries:", dataSource.length);
+    console.log("StockData: Entries with brand", selectedBrand, ":", dataSource.filter(entry => selectedBrand === "all" || entry.brand === selectedBrand).length);
     return result;
   }, [dataSource, selectedBrand]);
 
   const availableBrands = useMemo(() => {
     const brands = new Set<string>();
     dataSource.forEach(entry => {
-      if (entry.brand) brands.add(entry.brand);
+      // If a model is selected, only show brands that have that model
+      if (entry.brand && (selectedModel === "all" || entry.model === selectedModel)) {
+        brands.add(entry.brand);
+      }
     });
     const result = Array.from(brands).sort();
-    console.log("StockData: Available brands:", result);
-    console.log("StockData: All brands in data:", dataSource.map(entry => ({
-      imei: entry.imei,
-      brand: entry.brand
-    })));
+    console.log("StockData: Available brands for model", selectedModel, ":", result);
+    console.log("StockData: Total entries:", dataSource.length);
+    console.log("StockData: Entries with model", selectedModel, ":", dataSource.filter(entry => selectedModel === "all" || entry.model === selectedModel).length);
     return result;
-  }, [dataSource]);
+  }, [dataSource, selectedModel]);
 
   const availableBookingPersons = useMemo(() => {
     const bookingPersons = new Set<string>();
@@ -253,8 +251,28 @@ const StockData = () => {
         console.log("StockData: Model", selectedModel, "not available for brand", selectedBrand, ", clearing model selection");
         setSelectedModel("all");
       }
+    } else {
+      // If brand is set to "all", we can keep the current model selection
+      // as it will be filtered appropriately by the availableModels logic
+      console.log("StockData: Brand set to 'all', showing all available models");
     }
   }, [selectedBrand, availableModels, selectedModel]);
+
+  // Clear brand selection when model changes
+  useEffect(() => {
+    if (selectedModel !== "all") {
+      // Check if the currently selected brand is available for the selected model
+      const isBrandAvailable = availableBrands.includes(selectedBrand);
+      if (!isBrandAvailable && selectedBrand !== "all") {
+        console.log("StockData: Brand", selectedBrand, "not available for model", selectedModel, ", clearing brand selection");
+        setSelectedBrand("all");
+      }
+    } else {
+      // If model is set to "all", we can keep the current brand selection
+      // as it will be filtered appropriately by the availableBrands logic
+      console.log("StockData: Model set to 'all', showing all available brands");
+    }
+  }, [selectedModel, availableBrands, selectedBrand]);
 
   const clearFilters = () => {
     setSelectedModel("all");
@@ -320,26 +338,40 @@ const StockData = () => {
             
             <div className="grid gap-4 md:grid-cols-3">
               <div className="grid gap-2">
-                <Label htmlFor="brand-filter">Filter by Brand</Label>
+                <Label htmlFor="brand-filter">
+                  Filter by Brand
+                  {selectedModel !== "all" && (
+                    <span className="text-sm text-muted-foreground ml-2">
+                      (filtered by {selectedModel})
+                    </span>
+                  )}
+                </Label>
                 <SearchableSelect
                   value={selectedBrand}
                   onValueChange={setSelectedBrand}
                   options={availableBrands}
-                  placeholder="Select brand"
+                  placeholder={selectedModel !== "all" ? `Select brand for ${selectedModel}` : "Select brand"}
                   searchPlaceholder="Search brands..."
-                  emptyText="No brands found."
+                  emptyText={selectedModel !== "all" ? `No brands found for ${selectedModel}` : "No brands found."}
                 />
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="model-filter">Filter by Model</Label>
+                <Label htmlFor="model-filter">
+                  Filter by Model
+                  {selectedBrand !== "all" && (
+                    <span className="text-sm text-muted-foreground ml-2">
+                      (filtered by {selectedBrand})
+                    </span>
+                  )}
+                </Label>
                 <SearchableSelect
                   value={selectedModel}
                   onValueChange={setSelectedModel}
                   options={availableModels}
-                  placeholder="Select model"
+                  placeholder={selectedBrand !== "all" ? `Select model for ${selectedBrand}` : "Select model"}
                   searchPlaceholder="Search models..."
-                  emptyText="No models found."
+                  emptyText={selectedBrand !== "all" ? `No models found for ${selectedBrand}` : "No models found."}
                 />
               </div>
 

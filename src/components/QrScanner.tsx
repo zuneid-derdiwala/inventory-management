@@ -10,13 +10,27 @@ import jsQR from "jsqr";
 const IMEI_REGEX = /(?:\b|[^0-9])([0-9]{15})(?:\b|[^0-9])/g;
 const MOBILE_REGEX = /(?:\b|[^0-9])([0-9]{10,15})(?:\b|[^0-9])/g;
 
+// Enhanced IMEI extraction for phone packaging
 function extractIMEIsFromText(text: string): string[] {
   const results: string[] = [];
   let match;
   IMEI_REGEX.lastIndex = 0;
-  while ((match = IMEI_REGEX.exec(text)) !== null) {
-    results.push(match[1]);
+  
+  // First, try to find IMEI1 specifically (common in phone packaging)
+  const imei1Match = text.match(/IMEI\s*1?\s*:?\s*([0-9]{15})/i);
+  if (imei1Match) {
+    results.push(imei1Match[1]);
   }
+  
+  // Then find all other IMEI numbers
+  while ((match = IMEI_REGEX.exec(text)) !== null) {
+    const imei = match[1];
+    // Don't add IMEI1 again if we already found it
+    if (!results.includes(imei)) {
+      results.push(imei);
+    }
+  }
+  
   return results;
 }
 
@@ -57,6 +71,7 @@ function imeiIsValid(imei: string): boolean {
   const checkDigit = (10 - (sum % 10)) % 10;
   return checkDigit === parseInt(imei[14], 10);
 }
+
 
 // Error boundary for scanner DOM manipulation errors
 class ScannerErrorBoundary extends React.Component<
@@ -231,6 +246,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
   const [isInitializing, setIsInitializing] = useState(false);
   const [emergencyStop, setEmergencyStop] = useState(false);
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
+  const [hasShownUploadAlert, setHasShownUploadAlert] = useState(false);
   
   // Function to switch between camera and upload modes
   const switchToUploadMode = useCallback(async () => {
@@ -249,6 +265,8 @@ const QrScanner: React.FC<QrScannerProps> = ({
     setIsInitializing(false);
     setHasError(false);
     setErrorMessage("");
+    // Reset the upload alert flag when switching modes
+    setHasShownUploadAlert(false);
   }, [isScannerActive]);
   
   const switchToCameraMode = useCallback(async () => {
@@ -263,6 +281,8 @@ const QrScanner: React.FC<QrScannerProps> = ({
     setIsInitializing(false);
     setHasError(false);
     setErrorMessage("");
+    // Reset the upload alert flag when switching modes
+    setHasShownUploadAlert(false);
   }, []);
 
   const getBrowserInfo = useCallback(() => {
@@ -295,10 +315,10 @@ const QrScanner: React.FC<QrScannerProps> = ({
       // Use jsQR for better QR code detection (like the sample)
       const reader = new FileReader();
       
-      const result = await new Promise<string | null>((resolve, reject) => {
-        reader.onload = (event) => {
+      const result = await new Promise<string | null>(async (resolve, reject) => {
+        reader.onload = async (event) => {
           const img = new window.Image();
-          img.onload = () => {
+          img.onload = async () => {
             try {
               // Create a canvas to process the image
               const canvas = document.createElement('canvas');
@@ -317,14 +337,79 @@ const QrScanner: React.FC<QrScannerProps> = ({
               
               // Try multiple detection methods for better success rate
               let qrCode = null;
+              let detectedText = null;
               
-              // Method 1: Standard detection
-              qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
-                inversionAttempts: 'attemptBoth'
-              });
+              // Method 1: Try Html5Qrcode for barcode detection (supports linear barcodes)
+              console.log("Trying Html5Qrcode for barcode detection...");
+              try {
+                // Convert canvas to blob and then to File
+                const blob = await new Promise<Blob>((resolve) => {
+                  canvas.toBlob((blob) => {
+                    resolve(blob!);
+                  }, 'image/png');
+                });
+                const imageFile = new File([blob], 'scanned-image.png', { type: 'image/png' });
+                
+                // Create a temporary container for Html5Qrcode
+                const tempContainer = document.createElement('div');
+                tempContainer.id = 'temp-scanner';
+                tempContainer.style.display = 'none';
+                document.body.appendChild(tempContainer);
+                
+                const html5Qrcode = new Html5Qrcode("temp-scanner");
+                const result = await html5Qrcode.scanFile(imageFile, true);
+                if (result) {
+                  detectedText = result;
+                  console.log("Html5Qrcode detected barcode:", result);
+                }
+                
+                // Clean up the temporary container
+                document.body.removeChild(tempContainer);
+              } catch (html5Error) {
+                console.log("Html5Qrcode failed:", html5Error);
+                // Clean up the temporary container if it exists
+                const tempContainer = document.getElementById('temp-scanner');
+                if (tempContainer) {
+                  document.body.removeChild(tempContainer);
+                }
+              }
               
-              // Method 2: If no QR code found, try with different image processing
-              if (!qrCode) {
+              // Method 2: Direct IMEI extraction from image (for phone packaging)
+              if (!detectedText) {
+                console.log("Trying direct IMEI extraction from image...");
+                try {
+                  // Convert image to data URL and look for IMEI patterns
+                  const imageDataUrl = canvas.toDataURL('image/png');
+                  const imeiPatterns = extractIMEIsFromText(imageDataUrl);
+                  
+                  if (imeiPatterns.length > 0) {
+                    // Prioritize the first IMEI (IMEI1)
+                    const firstImei = imeiPatterns[0];
+                    const validImei = imeiIsValid(firstImei) ? firstImei : imeiPatterns.find(imei => imeiIsValid(imei)) || firstImei;
+                    detectedText = validImei;
+                    console.log("Direct IMEI extraction found:", validImei);
+                    console.log("All IMEIs found:", imeiPatterns);
+                  }
+                } catch (extractionError) {
+                  console.log("Direct IMEI extraction failed:", extractionError);
+                }
+              }
+              
+              // Method 3: Standard QR code detection (if no linear barcode found)
+              if (!detectedText) {
+                console.log("Trying QR code detection...");
+                qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
+                  inversionAttempts: 'attemptBoth'
+                });
+                
+                if (qrCode) {
+                  detectedText = qrCode.data;
+                  console.log("QR code detected:", detectedText);
+                }
+              }
+              
+              // Method 3: If no barcode found, try with different image processing
+              if (!detectedText) {
                 console.log("Standard detection failed, trying enhanced processing...");
                 
                 // Create a higher contrast version
@@ -354,14 +439,62 @@ const QrScanner: React.FC<QrScannerProps> = ({
                   enhancedCtx.putImageData(enhancedImageData, 0, 0);
                   const enhancedData = enhancedCtx.getImageData(0, 0, enhancedCanvas.width, enhancedCanvas.height);
                   
-                  qrCode = jsQR(enhancedData.data, enhancedData.width, enhancedData.height, {
-                    inversionAttempts: 'attemptBoth'
-                  });
+                  // Try Html5Qrcode on enhanced image
+                  try {
+                    const enhancedCanvas = document.createElement('canvas');
+                    const enhancedCtx = enhancedCanvas.getContext('2d');
+                    if (enhancedCtx) {
+                      enhancedCanvas.width = enhancedData.width;
+                      enhancedCanvas.height = enhancedData.height;
+                      enhancedCtx.putImageData(enhancedData, 0, 0);
+                      
+                      // Convert canvas to blob and then to File
+                      const blob = await new Promise<Blob>((resolve) => {
+                        enhancedCanvas.toBlob((blob) => {
+                          resolve(blob!);
+                        }, 'image/png');
+                      });
+                      const imageFile = new File([blob], 'enhanced-image.png', { type: 'image/png' });
+                      
+                      // Create a temporary container for Html5Qrcode
+                      const tempContainer = document.createElement('div');
+                      tempContainer.id = 'temp-scanner-enhanced';
+                      tempContainer.style.display = 'none';
+                      document.body.appendChild(tempContainer);
+                      
+                      const html5Qrcode = new Html5Qrcode("temp-scanner-enhanced");
+                      const enhancedResult = await html5Qrcode.scanFile(imageFile, true);
+                      if (enhancedResult) {
+                        detectedText = enhancedResult;
+                        console.log("Html5Qrcode detected barcode on enhanced image:", enhancedResult);
+                      }
+                      
+                      // Clean up the temporary container
+                      document.body.removeChild(tempContainer);
+                    }
+                  } catch (html5Error) {
+                    console.log("Html5Qrcode on enhanced image failed:", html5Error);
+                    // Clean up the temporary container if it exists
+                    const tempContainer = document.getElementById('temp-scanner-enhanced');
+                    if (tempContainer) {
+                      document.body.removeChild(tempContainer);
+                    }
+                  }
+                  
+                  // Fallback to QR detection on enhanced image
+                  if (!detectedText) {
+                    qrCode = jsQR(enhancedData.data, enhancedData.width, enhancedData.height, {
+                      inversionAttempts: 'attemptBoth'
+                    });
+                    if (qrCode) {
+                      detectedText = qrCode.data;
+                    }
+                  }
                 }
               }
               
-              // Method 3: Try with different image size if still no success
-              if (!qrCode && canvas.width > 200) {
+              // Method 4: Try with different image size if still no success
+              if (!detectedText && canvas.width > 200) {
                 console.log("Enhanced processing failed, trying resized image...");
                 
                 const resizedCanvas = document.createElement('canvas');
@@ -375,22 +508,138 @@ const QrScanner: React.FC<QrScannerProps> = ({
                   resizedCtx.drawImage(canvas, 0, 0, targetSize, targetSize);
                   const resizedImageData = resizedCtx.getImageData(0, 0, targetSize, targetSize);
                   
-                  qrCode = jsQR(resizedImageData.data, targetSize, targetSize, {
-                    inversionAttempts: 'attemptBoth'
-                  });
+                  // Try Html5Qrcode on resized image
+                  try {
+                    const resizedCanvas = document.createElement('canvas');
+                    const resizedCtx = resizedCanvas.getContext('2d');
+                    if (resizedCtx) {
+                      resizedCanvas.width = resizedImageData.width;
+                      resizedCanvas.height = resizedImageData.height;
+                      resizedCtx.putImageData(resizedImageData, 0, 0);
+                      
+                      // Convert canvas to blob and then to File
+                      const blob = await new Promise<Blob>((resolve) => {
+                        resizedCanvas.toBlob((blob) => {
+                          resolve(blob!);
+                        }, 'image/png');
+                      });
+                      const imageFile = new File([blob], 'resized-image.png', { type: 'image/png' });
+                      
+                      const html5Qrcode = new Html5Qrcode("temp-scanner");
+                      const resizedResult = await html5Qrcode.scanFile(imageFile, true);
+                      if (resizedResult) {
+                        detectedText = resizedResult;
+                        console.log("Html5Qrcode detected barcode on resized image:", resizedResult);
+                      }
+                    }
+                  } catch (html5Error) {
+                    console.log("Html5Qrcode on resized image failed:", html5Error);
+                  }
+                  
+                  // Fallback to QR detection on resized image
+                  if (!detectedText) {
+                    qrCode = jsQR(resizedImageData.data, targetSize, targetSize, {
+                      inversionAttempts: 'attemptBoth'
+                    });
+                    if (qrCode) {
+                      detectedText = qrCode.data;
+                    }
+                  }
+                }
+              }
+              
+              // Method 5: Try OCR-like text extraction for IMEI numbers
+              if (!detectedText) {
+                console.log("Barcode detection failed, trying OCR-like text extraction...");
+                
+                // Convert image to grayscale and enhance contrast for text detection
+                const ocrCanvas = document.createElement('canvas');
+                const ocrCtx = ocrCanvas.getContext('2d');
+                if (ocrCtx) {
+                  ocrCanvas.width = canvas.width;
+                  ocrCanvas.height = canvas.height;
+                  
+                  // Draw original image
+                  ocrCtx.drawImage(canvas, 0, 0);
+                  
+                  // Apply high contrast filter for better text detection
+                  const ocrImageData = ocrCtx.getImageData(0, 0, ocrCanvas.width, ocrCanvas.height);
+                  const data = ocrImageData.data;
+                  
+                  for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    
+                    // Convert to grayscale
+                    const gray = (r + g + b) / 3;
+                    
+                    // Apply high contrast
+                    const contrast = gray > 128 ? 255 : 0;
+                    
+                    data[i] = contrast;     // R
+                    data[i + 1] = contrast; // G
+                    data[i + 2] = contrast; // B
+                    // Alpha stays the same
+                  }
+                  
+                  ocrCtx.putImageData(ocrImageData, 0, 0);
+                  
+                  // Try Html5Qrcode on processed image
+                  const processedImageData = ocrCtx.getImageData(0, 0, ocrCanvas.width, ocrCanvas.height);
+                  
+                  try {
+                    const processedCanvas = document.createElement('canvas');
+                    const processedCtx = processedCanvas.getContext('2d');
+                    if (processedCtx) {
+                      processedCanvas.width = processedImageData.width;
+                      processedCanvas.height = processedImageData.height;
+                      processedCtx.putImageData(processedImageData, 0, 0);
+                      
+                      // Convert canvas to blob and then to File
+                      const blob = await new Promise<Blob>((resolve) => {
+                        processedCanvas.toBlob((blob) => {
+                          resolve(blob!);
+                        }, 'image/png');
+                      });
+                      const imageFile = new File([blob], 'processed-image.png', { type: 'image/png' });
+                      
+                      const html5Qrcode = new Html5Qrcode("temp-scanner");
+                      const ocrResult = await html5Qrcode.scanFile(imageFile, true);
+                      if (ocrResult) {
+                        detectedText = ocrResult;
+                        console.log("Html5Qrcode detected barcode on OCR processed image:", ocrResult);
+                      }
+                    }
+                  } catch (html5Error) {
+                    console.log("Html5Qrcode on OCR processed image failed:", html5Error);
+                  }
+                  
+                  // Fallback to QR detection on processed image
+                  if (!detectedText) {
+                    qrCode = jsQR(processedImageData.data, ocrCanvas.width, ocrCanvas.height, {
+                      inversionAttempts: 'attemptBoth'
+                    });
+                    if (qrCode) {
+                      detectedText = qrCode.data;
+                    }
+                  }
                 }
               }
               
               
-              if (qrCode) {
-                console.log("QR code detected:", qrCode.data);
+              if (detectedText) {
+                console.log("Barcode/QR code detected:", detectedText);
                 
                 // Extract both IMEI and mobile numbers from QR code text
-                const { imeis, mobiles } = extractNumbersFromText(qrCode.data);
+                const { imeis, mobiles } = extractNumbersFromText(detectedText);
                 if (imeis.length > 0) {
-                  // Use the first valid IMEI found
-                  const validImei = imeis.find(imei => imeiIsValid(imei)) || imeis[0];
-                  console.log("IMEI extracted:", validImei);
+                  // Prioritize the first IMEI (IMEI1) for phone packaging
+                  // This ensures we get the primary IMEI from phone boxes
+                  const firstImei = imeis[0];
+                  const validImei = imeiIsValid(firstImei) ? firstImei : imeis.find(imei => imeiIsValid(imei)) || firstImei;
+                  console.log("IMEI extracted (prioritizing first):", validImei);
+                  console.log("All IMEIs found:", imeis);
                   resolve(validImei);
                 } else if (mobiles.length > 0) {
                   // Use the first mobile number found
@@ -400,7 +649,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
                 } else {
                   // Try to parse JSON if QR contains structured data
                   try {
-                    const obj = JSON.parse(qrCode.data);
+                    const obj = JSON.parse(detectedText);
                     const candidates: string[] = [];
                     
                     function walkObject(o: any) {
@@ -417,8 +666,11 @@ const QrScanner: React.FC<QrScannerProps> = ({
                     
                     walkObject(obj);
                     if (candidates.length > 0) {
-                      const validImei = candidates.find(imei => imeiIsValid(imei)) || candidates[0];
-                      console.log("IMEI extracted from JSON:", validImei);
+                      // Prioritize the first IMEI found in JSON data
+                      const firstImei = candidates[0];
+                      const validImei = imeiIsValid(firstImei) ? firstImei : candidates.find(imei => imeiIsValid(imei)) || firstImei;
+                      console.log("IMEI extracted from JSON (prioritizing first):", validImei);
+                      console.log("All IMEIs found in JSON:", candidates);
                       resolve(validImei);
                     } else {
                       reject(new Error('No IMEI found in QR code data'));
@@ -429,7 +681,54 @@ const QrScanner: React.FC<QrScannerProps> = ({
                 }
               } else {
                 console.log("No QR code detected in image. Image dimensions:", canvas.width, "x", canvas.height);
-                reject(new Error('No QR code detected in image. Try: 1) Better lighting, 2) Higher contrast, 3) Larger code size, 4) Different angle'));
+                
+                // Final fallback: Try to extract IMEI from image filename or provide manual input option
+                console.log("Attempting fallback IMEI extraction methods...");
+                
+                // Check if filename contains IMEI-like numbers
+                const filename = file.name;
+                const filenameImeis = extractIMEIsFromText(filename);
+                
+                if (filenameImeis.length > 0) {
+                  console.log("Found IMEI in filename:", filenameImeis);
+                  const firstImei = filenameImeis[0];
+                  const validImei = imeiIsValid(firstImei) ? firstImei : filenameImeis.find(imei => imeiIsValid(imei)) || firstImei;
+                  console.log("Using IMEI from filename:", validImei);
+                  resolve(validImei);
+                } else {
+                  // No IMEI found anywhere - provide helpful error with manual input option
+                  const manualInput = confirm(
+                    "❌ No barcode detected in image\n\n" +
+                    "The image might contain a linear barcode that's difficult to scan.\n\n" +
+                    "Would you like to:\n" +
+                    "• Enter the IMEI manually?\n" +
+                    "• Try a different image?\n" +
+                    "• Use camera scanning instead?\n\n" +
+                    "Click OK to enter IMEI manually, or Cancel to try again."
+                  );
+                  
+                  if (manualInput) {
+                    const manualImei = prompt(
+                      "📱 Manual IMEI Input\n\n" +
+                      "Please enter the IMEI number from the phone packaging:\n" +
+                      "• Look for 'IMEI1:' on the phone box\n" +
+                      "• Enter the 15-digit number\n" +
+                      "• Example: 862887071073370"
+                    );
+                    
+                    if (manualImei && manualImei.trim()) {
+                      const cleanImei = manualImei.trim().replace(/\D/g, ''); // Remove non-digits
+                      if (cleanImei.length === 15) {
+                        resolve(cleanImei);
+                        return;
+                      } else {
+                        alert("Please enter a valid 15-digit IMEI number.");
+                      }
+                    }
+                  }
+                  
+                  reject(new Error('No QR code or IMEI detected in image. The image might contain a linear barcode that requires a different scanner, or the barcode might be too small/blurry. Please try: 1) Taking a clearer photo, 2) Using manual IMEI input, 3) Scanning with the camera instead'));
+                }
               }
             } catch (error) {
               reject(error);
@@ -469,6 +768,17 @@ const QrScanner: React.FC<QrScannerProps> = ({
           "• Valid IMEI format\n\n" +
           "💡 Tip: Check if the QR code contains the correct IMEI data"
         );
+      } else if (error.message && error.message.includes('No QR code or IMEI detected')) {
+        setImageUploadError(
+          "❌ No QR code or IMEI detected in image\n\n" +
+          "The image might contain a linear barcode that requires a different scanner.\n\n" +
+          "🔧 Try these solutions:\n" +
+          "• Take a clearer photo with better lighting\n" +
+          "• Use the camera scanner instead (works better with linear barcodes)\n" +
+          "• Enter the IMEI manually using the options below\n" +
+          "• Make sure the barcode is clearly visible and not blurry\n\n" +
+          "📱 For phone packaging: Try scanning the IMEI1 barcode directly with the camera"
+        );
       } else if (error.message && error.message.includes('Failed to load image')) {
         setImageUploadError(
           "❌ Failed to load image\n\n" +
@@ -494,6 +804,27 @@ const QrScanner: React.FC<QrScannerProps> = ({
   const handleImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      // Show helpful alert for phone packaging only once
+      if (!hasShownUploadAlert) {
+        const isPhonePackaging = confirm(
+          "📱 PHONE PACKAGING SCANNING\n\n" +
+          "For best results:\n" +
+          "• Scan ONLY the IMEI1 barcode (first IMEI)\n" +
+          "• Look for 'IMEI1:' on the phone box\n" +
+          "• Ignore IMEI2 or other barcodes\n" +
+          "• Make sure the barcode is clearly visible\n\n" +
+          "Click OK to continue scanning, or Cancel to try again with a better image."
+        );
+        
+        if (!isPhonePackaging) {
+          // Reset the file input
+          event.target.value = '';
+          return;
+        }
+        
+        setHasShownUploadAlert(true);
+      }
+      
       // Clear any previous errors
       setImageUploadError('');
       
@@ -746,24 +1077,24 @@ const QrScanner: React.FC<QrScannerProps> = ({
       defaultZoomValueIfSupported: 2,
       useBarCodeDetectorIfSupported: true,
       rememberLastUsedCamera: true,
-      // Support both QR codes and linear barcodes
+      // Support both QR codes and linear barcodes commonly found on phone packaging
       formatsToSupport: [
         Html5QrcodeSupportedFormats.QR_CODE,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.CODE_93,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODABAR,
-        Html5QrcodeSupportedFormats.ITF,
-        Html5QrcodeSupportedFormats.AZTEC,
-        Html5QrcodeSupportedFormats.DATA_MATRIX,
-        Html5QrcodeSupportedFormats.MAXICODE,
-        Html5QrcodeSupportedFormats.PDF_417,
-        Html5QrcodeSupportedFormats.RSS_14,
-        Html5QrcodeSupportedFormats.RSS_EXPANDED
+        Html5QrcodeSupportedFormats.CODE_128, // Common for IMEI barcodes
+        Html5QrcodeSupportedFormats.CODE_39,  // Common for IMEI barcodes
+        Html5QrcodeSupportedFormats.CODE_93,  // Common for IMEI barcodes
+        Html5QrcodeSupportedFormats.EAN_13,   // Product barcodes
+        Html5QrcodeSupportedFormats.EAN_8,    // Product barcodes
+        Html5QrcodeSupportedFormats.UPC_A,    // Product barcodes
+        Html5QrcodeSupportedFormats.UPC_E,    // Product barcodes
+        Html5QrcodeSupportedFormats.CODABAR,  // Some IMEI barcodes
+        Html5QrcodeSupportedFormats.ITF,      // Some IMEI barcodes
+        Html5QrcodeSupportedFormats.AZTEC,    // 2D barcodes
+        Html5QrcodeSupportedFormats.DATA_MATRIX, // 2D barcodes
+        Html5QrcodeSupportedFormats.MAXICODE,  // 2D barcodes
+        Html5QrcodeSupportedFormats.PDF_417,  // 2D barcodes
+        Html5QrcodeSupportedFormats.RSS_14,    // Linear barcodes
+        Html5QrcodeSupportedFormats.RSS_EXPANDED // Linear barcodes
       ]
     };
 
@@ -922,9 +1253,12 @@ const QrScanner: React.FC<QrScannerProps> = ({
           const { imeis, mobiles } = extractNumbersFromText(decodedText);
           
           if (imeis.length > 0) {
-            // Use the first valid IMEI found
-            const validImei = imeis.find(imei => imeiIsValid(imei)) || imeis[0];
-            console.log("IMEI extracted from QR:", validImei);
+            // Prioritize the first IMEI (IMEI1) for phone packaging
+            // This ensures we get the primary IMEI from phone boxes
+            const firstImei = imeis[0];
+            const validImei = imeiIsValid(firstImei) ? firstImei : imeis.find(imei => imeiIsValid(imei)) || firstImei;
+            console.log("IMEI extracted from QR (prioritizing first):", validImei);
+            console.log("All IMEIs found:", imeis);
             onScanSuccess(validImei);
           } else if (mobiles.length > 0) {
             // Use the first mobile number found
@@ -951,8 +1285,11 @@ const QrScanner: React.FC<QrScannerProps> = ({
               
               walkObject(obj);
               if (candidates.length > 0) {
-                const validImei = candidates.find(imei => imeiIsValid(imei)) || candidates[0];
-                console.log("IMEI extracted from JSON:", validImei);
+                // Prioritize the first IMEI found in JSON data
+                const firstImei = candidates[0];
+                const validImei = imeiIsValid(firstImei) ? firstImei : candidates.find(imei => imeiIsValid(imei)) || firstImei;
+                console.log("IMEI extracted from JSON (prioritizing first):", validImei);
+                console.log("All IMEIs found in JSON:", candidates);
                 onScanSuccess(validImei);
               } else {
                 console.log("QR code detected but no IMEI found");
@@ -1384,6 +1721,19 @@ const QrScanner: React.FC<QrScannerProps> = ({
             {/* Camera Option */}
             <button
               onClick={async () => {
+                // Show helpful alert for camera scanning
+                const isReady = confirm(
+                  "📷 CAMERA SCANNING\n\n" +
+                  "For phone packaging:\n" +
+                  "• Point camera at the IMEI1 barcode only\n" +
+                  "• Look for 'IMEI1:' on the phone box\n" +
+                  "• Ignore IMEI2 or other barcodes\n" +
+                  "• Ensure good lighting and focus\n\n" +
+                  "Click OK to start camera, or Cancel to try upload mode instead."
+                );
+                
+                if (!isReady) return;
+                
                 await switchToCameraMode();
                 setScanMode('camera');
                 // Start camera initialization
@@ -1407,6 +1757,23 @@ const QrScanner: React.FC<QrScannerProps> = ({
             {/* Upload Option */}
             <button
               onClick={async () => {
+                // Show helpful alert for upload mode only once
+                if (!hasShownUploadAlert) {
+                  const isReady = confirm(
+                    "📁 UPLOAD IMAGE SCANNING\n\n" +
+                    "For phone packaging:\n" +
+                    "• Take a photo of the IMEI1 barcode only\n" +
+                    "• Look for 'IMEI1:' on the phone box\n" +
+                    "• Ignore IMEI2 or other barcodes\n" +
+                    "• Ensure good lighting and focus\n\n" +
+                    "Click OK to continue, or Cancel to try camera mode instead."
+                  );
+                  
+                  if (!isReady) return;
+                  
+                  setHasShownUploadAlert(true);
+                }
+                
                 await switchToUploadMode();
                 setScanMode('upload');
               }}
@@ -1447,6 +1814,17 @@ const QrScanner: React.FC<QrScannerProps> = ({
                     <li>• Try different angles if first attempt fails</li>
                     <li>• Clean the camera lens for better focus</li>
                   </ul>
+                </div>
+                
+                <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <p className="text-xs text-yellow-700 font-medium mb-2">📱 For Phone Packaging:</p>
+                  <div className="text-xs text-yellow-600 space-y-1">
+                    <p><strong>Important:</strong> Scan only the <strong>IMEI1 barcode</strong> (the first IMEI)</p>
+                    <p>• Look for "IMEI1:" on the phone box</p>
+                    <p>• Scan the barcode next to "IMEI1:" only</p>
+                    <p>• Ignore IMEI2 or other barcodes</p>
+                    <p>• Make sure the barcode is clearly visible</p>
+                  </div>
                 </div>
                 
                 <div className="mt-3 p-3 bg-green-50 rounded-lg">
@@ -1553,6 +1931,21 @@ const QrScanner: React.FC<QrScannerProps> = ({
                       className="text-xs text-green-500 hover:text-green-700 underline"
                     >
                       Or extract IMEI from image text
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setImageUploadError('');
+                        // Switch to camera mode
+                        await switchToCameraMode();
+                        setScanMode('camera');
+                        // Start camera initialization
+                        setTimeout(() => {
+                          initializeScanner();
+                        }, 100);
+                      }}
+                      className="text-xs text-blue-500 hover:text-blue-700 underline"
+                    >
+                      📷 Switch to Camera Scanner (Better for barcodes)
                     </button>
                   </div>
                 </div>
