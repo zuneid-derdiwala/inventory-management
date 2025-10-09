@@ -236,22 +236,22 @@ const Database = () => {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <Card className="col-span-full">
-        <CardHeader className="flex items-center justify-center space-y-0 pb-2">
-          <CardTitle className="uppercase text-center">All Data Entries</CardTitle>
+        <CardHeader className="flex items-center justify-center space-y-0 pb-2 p-4 sm:p-6">
+          <CardTitle className="uppercase text-center text-lg sm:text-xl">All Data Entries</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-6">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="bg-green-100 p-3 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{totalUnitStock}</div>
-              <div className="text-sm text-green-700">In Stock</div>
+        <CardContent className="grid gap-4 sm:gap-6 p-4 sm:p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-center">
+            <div className="bg-green-100 p-4 sm:p-6 rounded-lg">
+              <div className="text-xl sm:text-2xl font-bold text-green-600">{totalUnitStock}</div>
+              <div className="text-xs sm:text-sm text-green-700">In Stock</div>
             </div>
-            <div className="bg-red-100 p-3 rounded-lg">
-              <div className="text-2xl font-bold text-red-600">{totalSoldStock}</div>
-              <div className="text-sm text-red-700">Sold</div>
+            <div className="bg-red-100 p-4 sm:p-6 rounded-lg">
+              <div className="text-xl sm:text-2xl font-bold text-red-600">{totalSoldStock}</div>
+              <div className="text-xs sm:text-sm text-red-700">Sold</div>
             </div>
-            <div className="bg-blue-100 p-3 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">{totalItems}</div>
-              <div className="text-sm text-blue-700">Total Items</div>
+            <div className="bg-blue-100 p-4 sm:p-6 rounded-lg">
+              <div className="text-xl sm:text-2xl font-bold text-blue-600">{totalItems}</div>
+              <div className="text-xs sm:text-sm text-blue-700">Total Items</div>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

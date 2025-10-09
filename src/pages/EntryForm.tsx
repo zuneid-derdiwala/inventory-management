@@ -196,10 +196,10 @@ const EntryForm = () => {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <Card className="col-span-full">
-        <CardHeader>
-          <CardTitle className="text-center uppercase">ENTRY FORM</CardTitle>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-center uppercase text-lg sm:text-xl">ENTRY FORM</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-6">
+        <CardContent className="grid gap-4 sm:gap-6 p-4 sm:p-6">
           {/* Info banner when no data is available */}
           {hasNoData && (
             <div className="space-y-4">
@@ -216,11 +216,11 @@ const EntryForm = () => {
           
           {/* Device Information */}
           <Collapsible open={isDeviceInfoOpen} onOpenChange={setIsDeviceInfoOpen} className="w-full">
-            <CollapsibleTrigger className="flex items-center justify-between w-full py-2 text-xl font-semibold mb-2 [&[data-state=open]>svg]:rotate-180">
+            <CollapsibleTrigger className="flex items-center justify-between w-full py-3 px-2 text-lg sm:text-xl font-semibold mb-2 [&[data-state=open]>svg]:rotate-180 touch-manipulation">
               <h3>Device Information</h3>
-              <ChevronDown className="h-5 w-5 transition-transform duration-200" />
+              <ChevronDown className="h-5 w-5 sm:h-6 sm:w-6 transition-transform duration-200" />
             </CollapsibleTrigger>
-            <CollapsibleContent className="grid gap-4 p-4">
+            <CollapsibleContent className="grid gap-4 p-4 sm:p-6">
               <div className="grid gap-2">
                 <Label htmlFor="imei">IMEI (Main Input)</Label>
                 <div className="flex gap-2">

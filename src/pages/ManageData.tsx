@@ -172,38 +172,38 @@ const ManageDataPage = () => {
   return (
     <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
       <Card className="col-span-full">
-        <CardHeader>
-          <CardTitle className="text-center uppercase">Manage Data</CardTitle>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-center uppercase text-lg sm:text-xl">Manage Data</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-6">
+        <CardContent className="grid gap-4 sm:gap-6 p-4 sm:p-6">
           {/* Manage Brands Section */}
           <Collapsible open={isBrandsOpen} onOpenChange={setIsBrandsOpen} className="w-full">
-            <CollapsibleTrigger className="flex items-center justify-between w-full py-2 text-xl font-semibold mb-2 [&[data-state=open]>svg]:rotate-180">
+            <CollapsibleTrigger className="flex items-center justify-between w-full py-3 px-2 text-lg sm:text-xl font-semibold mb-2 [&[data-state=open]>svg]:rotate-180 touch-manipulation">
               <h3>Manage Brands</h3>
-              <ChevronDown className="h-5 w-5 transition-transform duration-200" />
+              <ChevronDown className="h-5 w-5 sm:h-6 sm:w-6 transition-transform duration-200" />
             </CollapsibleTrigger>
-            <CollapsibleContent className="grid gap-4 p-4 border rounded-md">
-              <div className="flex gap-2">
+            <CollapsibleContent className="grid gap-4 p-4 sm:p-6 border rounded-md">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <Input
                   id="newBrandName"
                   value={newBrandName}
                   onChange={(e) => setNewBrandName(e.target.value)}
                   placeholder="New Brand Name"
-                  className="flex-grow"
+                  className="flex-grow text-sm sm:text-base"
                 />
-                <Button onClick={handleAddBrand} disabled={!newBrandName.trim()}>
+                <Button onClick={handleAddBrand} disabled={!newBrandName.trim()} className="w-full sm:w-auto px-4 py-2 touch-manipulation">
                   <PlusCircle className="h-4 w-4 mr-2" /> Add Brand
                 </Button>
               </div>
 
               <div className="mt-4">
-                <h4 className="text-lg font-medium mb-2">Existing Brands:</h4>
+                <h4 className="text-base sm:text-lg font-medium mb-3">Existing Brands:</h4>
                 {availableBrands.length > 0 ? (
-                  <ul className="grid gap-2">
+                  <ul className="grid gap-3">
                     {availableBrands.map((brand) => (
-                      <li key={brand} className="flex justify-between items-center p-2 border rounded-md">
-                        <span className="font-medium">{brand}</span>
-                        <div className="flex gap-2">
+                      <li key={brand} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 border rounded-lg gap-3">
+                        <span className="font-medium text-sm sm:text-base">{brand}</span>
+                        <div className="flex gap-2 w-full sm:w-auto">
                           <AlertDialog open={brandToEdit === brand} onOpenChange={(open) => {
                             if (!open) {
                               setBrandToEdit(null);

@@ -309,7 +309,6 @@ const QrScanner: React.FC<QrScannerProps> = ({
   const [isInitializing, setIsInitializing] = useState(false);
   const [emergencyStop, setEmergencyStop] = useState(false);
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
-  const [hasShownUploadAlert, setHasShownUploadAlert] = useState(false);
   const [qrScanMode, setQrScanMode] = useState<'barcode' | 'qr'>('barcode');
   
   // Function to switch between camera and upload modes
@@ -356,7 +355,6 @@ const QrScanner: React.FC<QrScannerProps> = ({
     await new Promise(resolve => setTimeout(resolve, 500));
     
     // Reset the upload alert flag when switching modes
-    setHasShownUploadAlert(false);
     
     console.log("Upload mode activated - camera fully stopped");
   }, [qrCodeContainerId, scanTimeout]);
@@ -394,7 +392,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
     }
     
     // Reset the upload alert flag when switching modes
-    setHasShownUploadAlert(false);
+    
+    // Reset QR scan mode to default
+    setQrScanMode('barcode');
     
     console.log("Camera mode activated - ready for camera initialization");
   }, [scanTimeout]);
@@ -411,10 +411,10 @@ const QrScanner: React.FC<QrScannerProps> = ({
     return { isFirefox, isChrome, isSafari, isEdge, isIOS, isMobile };
   }, []);
 
-  // Function to capture camera frame and process with OCR
+  // Function to capture camera frame and process with same advanced pipeline as upload mode
   const captureAndProcessCameraFrame = useCallback(async (): Promise<string | null> => {
     try {
-      console.log("Attempting to capture camera frame for OCR processing...");
+      console.log("Attempting to capture camera frame for advanced processing...");
       
       // Get the video element from the scanner container
       const container = document.getElementById(qrCodeContainerId);
@@ -445,40 +445,129 @@ const QrScanner: React.FC<QrScannerProps> = ({
       // Draw the current video frame to canvas
       ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
       
-      console.log("Camera frame captured, processing with OCR...");
+      console.log("Camera frame captured, applying same processing pipeline as upload mode...");
       
-      // Use the same OCR extraction as upload mode
-      const imeiPatterns = await extractIMEIsFromImage(canvas);
+      // Apply the same multi-method detection pipeline as upload mode
+      let detectedText = null;
       
-      if (imeiPatterns.length > 0) {
-        // Filter out product barcodes
-        const validImeis = imeiPatterns.filter(imei => {
-          if (imei.startsWith('693') || imei.startsWith('690') || imei.startsWith('691') || 
-              imei.startsWith('692') || imei.startsWith('694') || imei.startsWith('695') ||
-              imei === '6932204509475' || imei === '693220450947') {
-            console.log("OCR filtering out product barcode:", imei);
-            return false;
-          }
-          return true;
+      // Method 1: Try Html5Qrcode for barcode detection (same as upload mode)
+      console.log("Trying Html5Qrcode for barcode detection on camera frame...");
+      try {
+        // Convert canvas to blob and then to File
+        const blob = await new Promise<Blob>((resolve) => {
+          canvas.toBlob((blob) => {
+            resolve(blob!);
+          }, 'image/png');
         });
+        const imageFile = new File([blob], 'camera-frame.png', { type: 'image/png' });
         
-        if (validImeis.length > 0) {
-          // Prioritize the first valid IMEI (IMEI1)
-          const firstImei = validImeis[0];
-          const validImei = imeiIsValid(firstImei) ? firstImei : validImeis.find(imei => imeiIsValid(imei)) || firstImei;
-          console.log("OCR extracted valid IMEI from camera frame:", validImei);
-          console.log("All IMEIs found via OCR:", validImeis);
-          return validImei;
+        // Create a temporary container for Html5Qrcode
+        const tempContainer = document.createElement('div');
+        tempContainer.id = 'temp-camera-scanner';
+        tempContainer.style.display = 'none';
+        document.body.appendChild(tempContainer);
+        
+        const html5Qrcode = new Html5Qrcode("temp-camera-scanner");
+        const result = await html5Qrcode.scanFile(imageFile, true);
+        if (result) {
+          // Only accept if it's a valid IMEI number (15 digits starting with 8 or 3)
+          if (result.length === 15 && (result.startsWith('8') || result.startsWith('3')) && imeiIsValid(result)) {
+            detectedText = result;
+            console.log("Html5Qrcode detected valid IMEI from camera frame:", result);
+          } else {
+            console.log("Html5Qrcode detected non-IMEI barcode from camera frame, ignoring:", result);
+            detectedText = null;
+          }
+        }
+        
+        // Clean up the temporary container
+        document.body.removeChild(tempContainer);
+      } catch (html5Error) {
+        console.log("Html5Qrcode on camera frame failed:", html5Error);
+        // Clean up the temporary container if it exists
+        const tempContainer = document.getElementById('temp-camera-scanner');
+        if (tempContainer) {
+          document.body.removeChild(tempContainer);
         }
       }
       
-      console.log("OCR processing did not find valid IMEI in camera frame");
+      // Method 2: OCR-based IMEI extraction from camera frame (same as upload mode)
+      if (!detectedText) {
+        console.log("Trying OCR-based IMEI extraction from camera frame...");
+        try {
+          const imeiPatterns = await extractIMEIsFromImage(canvas);
+          
+          if (imeiPatterns.length > 0) {
+            // Filter out product barcodes
+            const validImeis = imeiPatterns.filter(imei => {
+              if (imei.startsWith('693') || imei.startsWith('690') || imei.startsWith('691') || 
+                  imei.startsWith('692') || imei.startsWith('694') || imei.startsWith('695') ||
+                  imei === '6932204509475' || imei === '693220450947') {
+                console.log("OCR filtering out product barcode:", imei);
+                return false;
+              }
+              return true;
+            });
+            
+            if (validImeis.length > 0) {
+              // Prioritize the first valid IMEI (IMEI1)
+              const firstImei = validImeis[0];
+              const validImei = imeiIsValid(firstImei) ? firstImei : validImeis.find(imei => imeiIsValid(imei)) || firstImei;
+              detectedText = validImei;
+              console.log("OCR extracted valid IMEI from camera frame:", validImei);
+              console.log("All IMEIs found via OCR:", validImeis);
+            }
+          }
+        } catch (extractionError) {
+          console.log("OCR-based IMEI extraction from camera frame failed:", extractionError);
+        }
+      }
+      
+      // Method 3: Standard QR code detection (same as upload mode)
+      if (!detectedText) {
+        console.log("Trying QR code detection on camera frame...");
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'attemptBoth'
+        });
+        
+        if (qrCode) {
+          detectedText = qrCode.data;
+          console.log("QR code detected from camera frame:", detectedText);
+        }
+      }
+      
+      // Final validation: Only accept if it's a valid IMEI number
+      if (detectedText) {
+        if (detectedText.length === 15 && (detectedText.startsWith('8') || detectedText.startsWith('3')) && imeiIsValid(detectedText)) {
+          console.log("Valid IMEI detected from camera frame:", detectedText);
+          return detectedText;
+        }
+        
+        // Extract both IMEI and mobile numbers from the detected text
+        const { imeis, mobiles } = extractNumbersFromText(detectedText);
+        if (imeis.length > 0) {
+          // Prioritize the first IMEI (IMEI1) for phone packaging
+          const firstImei = imeis[0];
+          const validImei = imeiIsValid(firstImei) ? firstImei : imeis.find(imei => imeiIsValid(imei)) || firstImei;
+          console.log("IMEI extracted from camera frame (prioritizing first):", validImei);
+          console.log("All IMEIs found:", imeis);
+          return validImei;
+        } else if (mobiles.length > 0) {
+          // Use the first mobile number found
+          const mobileNumber = mobiles[0];
+          console.log("Mobile number extracted from camera frame:", mobileNumber);
+          return mobileNumber;
+        }
+      }
+      
+      console.log("Advanced processing did not find valid IMEI in camera frame");
       return null;
     } catch (error) {
-      console.log("OCR processing of camera frame failed:", error);
+      console.log("Advanced processing of camera frame failed:", error);
       return null;
     }
-  }, [qrCodeContainerId, scanTimeout]);
+  }, [qrCodeContainerId]);
 
   // Direct QR scanner using jsQR on camera stream
   const startDirectQRScanner = useCallback(async () => {
@@ -531,7 +620,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
       
       // Start jsQR processing loop
       const processQRCode = async () => {
-        if (!html5QrcodeRef.current || !isScannerActive) {
+        if (!html5QrcodeRef.current) {
           return;
         }
         
@@ -602,21 +691,34 @@ const QrScanner: React.FC<QrScannerProps> = ({
                   }
                   return;
                 } else {
-                  console.log("Direct QR scanner detected QR but no valid IMEI found");
+                  console.log("Direct QR scanner detected QR but no valid IMEI found, trying advanced processing...");
+                  
+                  // If QR detection didn't find valid IMEI, try the same advanced processing as upload mode
+                  try {
+                    const advancedResult = await captureAndProcessCameraFrame();
+                    if (advancedResult) {
+                      console.log("Advanced processing found IMEI:", advancedResult);
+                      onScanSuccess(advancedResult);
+                      
+                      // Stop scanner
+                      if (html5QrcodeRef.current) {
+                        await safeStopScanner(html5QrcodeRef.current);
+                      }
+                      return;
+                    }
+                  } catch (advancedError) {
+                    console.log("Advanced processing failed:", advancedError);
+                  }
                 }
               }
             }
           }
           
           // Continue processing
-          if (isScannerActive) {
-            setTimeout(processQRCode, 100); // Process every 100ms
-          }
+          setTimeout(processQRCode, 100); // Process every 100ms
         } catch (error) {
           console.log("Direct QR processing error:", error);
-          if (isScannerActive) {
-            setTimeout(processQRCode, 1000); // Retry after 1 second on error
-          }
+          setTimeout(processQRCode, 1000); // Retry after 1 second on error
         }
       };
       
@@ -628,7 +730,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
       setErrorMessage(`Failed to start direct QR scanner: ${error.message}`);
       setHasError(true);
     }
-  }, [qrCodeContainerId, isScannerActive, onScanSuccess]);
+  }, [qrCodeContainerId, onScanSuccess]);
 
   const scanImageFile = useCallback(async (file: File) => {
     // Only allow file scanning in upload mode
@@ -1215,26 +1317,6 @@ const QrScanner: React.FC<QrScannerProps> = ({
   const handleImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Show helpful alert for phone packaging only once
-      if (!hasShownUploadAlert) {
-        const isPhonePackaging = confirm(
-          "📱 PHONE PACKAGING SCANNING\n\n" +
-          "For best results:\n" +
-          "• Scan ONLY the IMEI1 barcode (first IMEI)\n" +
-          "• Look for 'IMEI1:' on the phone box\n" +
-          "• Ignore IMEI2 or other barcodes\n" +
-          "• Make sure the barcode is clearly visible\n\n" +
-          "Click OK to continue scanning, or Cancel to try again with a better image."
-        );
-        
-        if (!isPhonePackaging) {
-          // Reset the file input
-          event.target.value = '';
-          return;
-        }
-        
-        setHasShownUploadAlert(true);
-      }
       
       // Clear any previous errors
       setImageUploadError('');
@@ -1937,6 +2019,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
       }
 
       // Try appropriate scanner based on mode
+      console.log("Scanner mode:", qrScanMode);
       if (qrScanMode === 'qr') {
         console.log("Attempting direct QR scanner initialization...");
         await startDirectQRScanner();
@@ -1952,7 +2035,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
     } finally {
       isInitializingRef.current = false;
     }
-  }, [onScanSuccess, onScanError, qrCodeContainerId, hasError, isInitialized, checkCameraPermission, requestCameraPermission, getBrowserInfo, getScannerConfig, waitForContainer, initializeScannerDirect]);
+  }, [onScanSuccess, onScanError, qrCodeContainerId, hasError, isInitialized, checkCameraPermission, requestCameraPermission, getBrowserInfo, getScannerConfig, waitForContainer, initializeScannerDirect, startDirectQRScanner, qrScanMode]);
 
   // Camera will only start when user explicitly clicks the camera button
 
@@ -2129,61 +2212,79 @@ const QrScanner: React.FC<QrScannerProps> = ({
   return (
     <ScannerErrorBoundary>
       <div className="w-full">
-        {/* Scanner Mode Selector for Camera */}
+        {/* Scanner Mode Selector for Camera - Mobile Responsive */}
         {scanMode === 'camera' && (
-          <div className="mb-4 p-3 bg-muted rounded-lg">
-            <label className="text-sm font-medium mb-2 block">Scanner Type:</label>
-            <div className="grid grid-cols-2 gap-2">
+          <div className="mb-4 p-3 sm:p-4 bg-muted rounded-lg">
+            <label className="text-sm sm:text-base font-medium mb-3 block">Scanner Type:</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
-                onClick={() => {
+                onClick={async () => {
                   setQrScanMode('barcode');
-                  if (isInitialized) {
+                  if (isInitialized && html5QrcodeRef.current) {
+                    // Stop current scanner
+                    await safeStopScanner(html5QrcodeRef.current);
+                    setIsInitialized(false);
+                    setIsScannerActive(false);
                     // Restart scanner with new mode
-                    safeStopScanner(html5QrcodeRef.current);
                     setTimeout(() => initializeScanner(), 500);
                   }
                 }}
-                className={`p-2 rounded text-sm transition-colors ${
+                className={`p-3 sm:p-4 rounded-lg text-sm sm:text-base transition-colors touch-manipulation ${
                   qrScanMode === 'barcode'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
                 }`}
               >
-                📊 Barcode Scanner
-                <div className="text-xs mt-1">Linear barcodes, QR codes</div>
+                <div className="flex items-center justify-center space-x-2">
+                  <span className="text-lg">📊</span>
+                  <span className="font-medium">Barcode Scanner</span>
+                </div>
+                <div className="text-xs sm:text-sm mt-2 text-center opacity-90">
+                  Linear barcodes, QR codes
+                </div>
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   setQrScanMode('qr');
-                  if (isInitialized) {
+                  if (isInitialized && html5QrcodeRef.current) {
+                    // Stop current scanner
+                    await safeStopScanner(html5QrcodeRef.current);
+                    setIsInitialized(false);
+                    setIsScannerActive(false);
                     // Restart scanner with new mode
-                    safeStopScanner(html5QrcodeRef.current);
                     setTimeout(() => initializeScanner(), 500);
                   }
                 }}
-                className={`p-2 rounded text-sm transition-colors ${
+                className={`p-3 sm:p-4 rounded-lg text-sm sm:text-base transition-colors touch-manipulation ${
                   qrScanMode === 'qr'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? 'bg-green-600 text-white shadow-md'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
                 }`}
               >
-                🔲 Direct QR Scanner
-                <div className="text-xs mt-1">QR codes only, faster</div>
+                <div className="flex items-center justify-center space-x-2">
+                  <span className="text-lg">🔲</span>
+                  <span className="font-medium">Direct QR Scanner</span>
+                </div>
+                <div className="text-xs sm:text-sm mt-2 text-center opacity-90">
+                  QR codes only, faster
+                </div>
               </button>
             </div>
-            <div className="mt-2 text-xs text-gray-600">
-              {qrScanMode === 'barcode' 
-                ? "Uses Html5Qrcode for barcodes and QR codes with OCR fallback"
-                : "Uses jsQR directly for QR codes only, optimized for speed"
-              }
+            <div className="mt-3 p-2 bg-blue-50 rounded-md">
+              <p className="text-xs sm:text-sm text-blue-700 text-center">
+                {qrScanMode === 'barcode' 
+                  ? "Uses Html5Qrcode for barcodes and QR codes with OCR fallback"
+                  : "Uses jsQR directly for QR codes only, optimized for speed"
+                }
+              </p>
             </div>
           </div>
         )}
 
-        {/* Camera selector for desktop users */}
+        {/* Camera selector - Mobile Responsive */}
         {availableCameras.length > 1 && (
-          <div className="mb-4 p-3 bg-muted rounded-lg">
-            <label className="text-sm font-medium mb-2 block">Select Camera:</label>
+          <div className="mb-4 p-3 sm:p-4 bg-muted rounded-lg">
+            <label className="text-sm sm:text-base font-medium mb-3 block">Select Camera:</label>
             <select 
               value={selectedCameraId} 
               onChange={async (e) => {
@@ -2210,7 +2311,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
                   }
                 }
               }}
-              className="w-full p-2 border rounded-md text-sm"
+              className="w-full p-3 sm:p-4 border rounded-lg text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               {availableCameras.map((camera) => {
                 const label = camera.label || `Camera ${camera.id.slice(0, 8)}`;
@@ -2237,9 +2338,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
             
             {/* Camera switching indicator */}
             {isSwitchingCamera && (
-              <div className="mt-2 p-2 bg-blue-50 rounded-md">
-                <p className="text-xs text-blue-600 flex items-center">
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-2"></div>
+              <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-600 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
                   Switching camera...
                 </p>
               </div>
@@ -2248,17 +2349,17 @@ const QrScanner: React.FC<QrScannerProps> = ({
             {!isInitialized && selectedCameraId && !isSwitchingCamera && (
               <button
                 onClick={() => initializeScanner()}
-                className="mt-2 px-3 py-1 bg-primary text-primary-foreground rounded text-sm hover:bg-primary/90"
+                className="mt-3 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg text-sm sm:text-base font-medium hover:bg-primary/90 active:bg-primary/80 transition-colors touch-manipulation"
               >
-                Switch Camera
+                📷 Switch Camera
               </button>
             )}
           </div>
         )}
         
-        {/* Emergency Stop Button */}
+        {/* Emergency Stop Button - Mobile Responsive */}
         {!emergencyStop && (
-          <div className="w-full p-2 bg-red-50 border-b border-red-200">
+          <div className="w-full p-3 sm:p-4 bg-red-50 border-b border-red-200">
             <button
               onClick={() => {
                 setEmergencyStop(true);
@@ -2268,9 +2369,12 @@ const QrScanner: React.FC<QrScannerProps> = ({
                 }
                 console.log("Emergency stop activated - scanner disabled");
               }}
-              className="w-full px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition-colors"
+              className="w-full px-4 py-3 sm:py-4 bg-red-600 text-white rounded-lg text-sm sm:text-base font-medium hover:bg-red-700 active:bg-red-800 transition-colors touch-manipulation"
             >
-              🛑 Emergency Stop Scanner (Click if infinite loop)
+              🛑 Emergency Stop Scanner
+              <div className="text-xs sm:text-sm mt-1 opacity-90">
+                (Click if infinite loop)
+              </div>
             </button>
           </div>
         )}
@@ -2300,31 +2404,18 @@ const QrScanner: React.FC<QrScannerProps> = ({
           </div>
         )}
         
-        {/* Mode Selection */}
+        {/* Mode Selection - Mobile Responsive */}
         {!emergencyStop && (
-          <div className="w-full p-4 border-b border-gray-200">
-            <div className="text-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">Choose Scanning Method</h3>
-              <p className="text-sm text-gray-500">Select how you'd like to scan the QR code</p>
+          <div className="w-full p-4 sm:p-6 border-b border-gray-200">
+            <div className="text-center mb-6">
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-3">Choose Scanning Method</h3>
+              <p className="text-sm sm:text-base text-gray-600">Select how you'd like to scan the QR code</p>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             {/* Camera Option */}
             <button
               onClick={async () => {
-                // Show helpful alert for camera scanning
-                const isReady = confirm(
-                  "📷 CAMERA SCANNING\n\n" +
-                  "For phone packaging:\n" +
-                  "• Point camera at the IMEI1 barcode only\n" +
-                  "• Look for 'IMEI1:' on the phone box\n" +
-                  "• Ignore IMEI2 or other barcodes\n" +
-                  "• Ensure good lighting and focus\n\n" +
-                  "Click OK to start camera, or Cancel to try upload mode instead."
-                );
-                
-                if (!isReady) return;
-                
                 await switchToCameraMode();
                 setScanMode('camera');
                 // Start camera initialization
@@ -2332,91 +2423,135 @@ const QrScanner: React.FC<QrScannerProps> = ({
                   initializeScanner();
                 }, 100);
               }}
-              className={`p-4 rounded-lg border-2 transition-all ${
+              className={`p-6 sm:p-8 rounded-xl border-2 transition-all touch-manipulation ${
                 scanMode === 'camera'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-lg'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:shadow-md active:bg-gray-50'
               }`}
             >
               <div className="text-center">
-                <Camera className="h-8 w-8 mx-auto mb-2" />
-                <h4 className="font-medium">Use Camera</h4>
-                <p className="text-xs mt-1">Live scanning</p>
+                <Camera className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-4" />
+                <h4 className="text-lg sm:text-xl font-semibold mb-2">Use Camera</h4>
+                <p className="text-sm sm:text-base opacity-80">Live scanning</p>
+                <div className="mt-3 text-xs sm:text-sm text-gray-500">
+                  Point camera at barcode
+                </div>
               </div>
             </button>
             
             {/* Upload Option */}
             <button
               onClick={async () => {
-                // Show helpful alert for upload mode only once
-                if (!hasShownUploadAlert) {
-                  const isReady = confirm(
-                    "📁 UPLOAD IMAGE SCANNING\n\n" +
-                    "For phone packaging:\n" +
-                    "• Take a photo of the IMEI1 barcode only\n" +
-                    "• Look for 'IMEI1:' on the phone box\n" +
-                    "• Ignore IMEI2 or other barcodes\n" +
-                    "• Ensure good lighting and focus\n\n" +
-                    "Click OK to continue, or Cancel to try camera mode instead."
-                  );
-                  
-                  if (!isReady) return;
-                  
-                  setHasShownUploadAlert(true);
-                }
-                
                 await switchToUploadMode();
                 setScanMode('upload');
               }}
-              className={`p-4 rounded-lg border-2 transition-all ${
+              className={`p-6 sm:p-8 rounded-xl border-2 transition-all touch-manipulation ${
                 scanMode === 'upload'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-lg'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:shadow-md active:bg-gray-50'
               }`}
             >
               <div className="text-center">
-                <Upload className="h-8 w-8 mx-auto mb-2" />
-                <h4 className="font-medium">Upload Image</h4>
-                <p className="text-xs mt-1">From gallery</p>
+                <Upload className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-4" />
+                <h4 className="text-lg sm:text-xl font-semibold mb-2">Upload Image</h4>
+                <p className="text-sm sm:text-base opacity-80">From gallery</p>
+                <div className="mt-3 text-xs sm:text-sm text-gray-500">
+                  Select image file
+                </div>
               </div>
             </button>
           </div>
           </div>
         )}
         
-        {/* Upload Mode UI */}
+        {/* Upload Mode UI - Mobile Responsive */}
         {scanMode === 'upload' && (
-          <div className="w-full p-4 border-b border-gray-200">
-            <div className="flex items-center justify-center mb-4">
+          <div className="w-full p-4 sm:p-6 border-b border-gray-200">
+            <div className="flex items-center justify-center mb-6">
               <div className="text-center">
-                <Image className="h-6 w-6 mx-auto mb-2 text-blue-600" />
-                <h3 className="text-lg font-semibold text-gray-700">Upload Image</h3>
-                <p className="text-sm text-gray-500">Upload an image containing a QR code or barcode</p>
-                <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                  <p className="text-xs text-blue-700 font-medium mb-1">📸 Tips for better scanning:</p>
-                  <ul className="text-xs text-blue-600 text-left space-y-1">
-                    <li>• Ensure good lighting on the code</li>
-                    <li>• Keep the code flat and straight</li>
-                    <li>• Make sure the code fills most of the image</li>
-                    <li>• Avoid shadows or reflections on the code</li>
-                    <li>• Works with both QR codes and linear barcodes</li>
-                    <li>• For phone screens: increase brightness</li>
-                    <li>• For printed codes: ensure high contrast</li>
-                    <li>• Try different angles if first attempt fails</li>
-                    <li>• Clean the camera lens for better focus</li>
+                <Image className="h-8 w-8 sm:h-10 sm:w-10 mx-auto mb-3 text-blue-600" />
+                <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2">Upload Image</h3>
+                <p className="text-sm sm:text-base text-gray-600">Upload an image containing a QR code or barcode</p>
+                <div className="mt-4 p-4 sm:p-6 bg-blue-50 rounded-xl">
+                  <p className="text-sm sm:text-base text-blue-700 font-semibold mb-3 flex items-center">
+                    <span className="text-lg mr-2">📸</span>
+                    Tips for better scanning:
+                  </p>
+                  <ul className="text-xs sm:text-sm text-blue-600 text-left space-y-2">
+                    <li className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>Ensure good lighting on the code</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>Keep the code flat and straight</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>Make sure the code fills most of the image</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>Avoid shadows or reflections on the code</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>Works with both QR codes and linear barcodes</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>For phone screens: increase brightness</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>For printed codes: ensure high contrast</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>Try different angles if first attempt fails</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>Clean the camera lens for better focus</span>
+                    </li>
                   </ul>
                 </div>
                 
-                <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                  <p className="text-xs text-yellow-700 font-medium mb-2">📱 For Phone Packaging:</p>
-                  <div className="text-xs text-yellow-600 space-y-1">
-                    <p><strong>Important:</strong> Scan only the <strong>IMEI1 barcode</strong> (the first IMEI)</p>
-                    <p>• Look for "IMEI1:" on the phone box</p>
-                    <p>• Scan the barcode next to "IMEI1:" only</p>
-                    <p>• Ignore IMEI2 or other barcodes</p>
-                    <p>• Make sure the barcode is clearly visible</p>
-                    <p>• <strong>Mobile tip:</strong> Hold phone steady and get close to the barcode</p>
-                    <p>• <strong>Lighting:</strong> Ensure good lighting on the barcode</p>
+                <div className="mt-4 p-4 sm:p-6 bg-yellow-50 rounded-xl border border-yellow-200">
+                  <p className="text-sm sm:text-base text-yellow-700 font-semibold mb-3 flex items-center">
+                    <span className="text-lg mr-2">📱</span>
+                    For Phone Packaging:
+                  </p>
+                  <div className="text-xs sm:text-sm text-yellow-600 space-y-2">
+                    <p className="font-semibold text-yellow-800">
+                      <span className="text-yellow-700">Important:</span> Scan only the <strong>IMEI1 barcode</strong> (the first IMEI)
+                    </p>
+                    <ul className="space-y-2">
+                      <li className="flex items-start">
+                        <span className="mr-2">•</span>
+                        <span>Look for "IMEI1:" on the phone box</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2">•</span>
+                        <span>Scan the barcode next to "IMEI1:" only</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2">•</span>
+                        <span>Ignore IMEI2 or other barcodes</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2">•</span>
+                        <span>Make sure the barcode is clearly visible</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2">•</span>
+                        <span><strong>Mobile tip:</strong> Hold phone steady and get close to the barcode</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="mr-2">•</span>
+                        <span><strong>Lighting:</strong> Ensure good lighting on the barcode</span>
+                      </li>
+                    </ul>
                   </div>
                 </div>
                 
@@ -2442,15 +2577,21 @@ const QrScanner: React.FC<QrScannerProps> = ({
               </div>
             </div>
             
-            <div className="flex flex-col items-center space-y-4">
-              <label htmlFor="image-upload" className="cursor-pointer">
-                <div className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
+            <div className="flex flex-col items-center space-y-6">
+              <label htmlFor="image-upload" className="cursor-pointer w-full">
+                <div className="flex items-center justify-center w-full px-6 py-8 sm:px-8 sm:py-12 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-colors touch-manipulation">
                   <div className="text-center">
-                    <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                    <p className="text-sm font-medium text-gray-600">
+                    <Upload className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-4 text-gray-400" />
+                    <p className="text-base sm:text-lg font-semibold text-gray-700 mb-2">
                       {isScanningImage ? 'Scanning image...' : 'Click to upload image'}
                     </p>
-                    <p className="text-xs text-gray-500">PNG, JPG, JPEG up to 10MB</p>
+                    <p className="text-sm sm:text-base text-gray-500">PNG, JPG, JPEG up to 10MB</p>
+                    {isScanningImage && (
+                      <div className="mt-4 flex items-center justify-center space-x-2 text-blue-600">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                        <span className="text-sm">Processing...</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <input
@@ -2464,15 +2605,15 @@ const QrScanner: React.FC<QrScannerProps> = ({
               </label>
               
               {imageUploadError && (
-                <div className="w-full p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center space-x-2 text-red-600 mb-2">
-                    <AlertCircle className="h-4 w-4" />
-                    <span className="text-sm font-medium">Upload Error</span>
+                <div className="w-full p-4 sm:p-6 bg-red-50 border border-red-200 rounded-xl">
+                  <div className="flex items-center space-x-3 text-red-600 mb-4">
+                    <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6" />
+                    <span className="text-base sm:text-lg font-semibold">Upload Error</span>
                   </div>
-                  <div className="text-sm text-red-600 whitespace-pre-line">
+                  <div className="text-sm sm:text-base text-red-600 whitespace-pre-line mb-4">
                     {imageUploadError}
                   </div>
-                  <div className="mt-2 flex flex-col space-y-2">
+                  <div className="space-y-3">
                     <button
                       onClick={() => {
                         setImageUploadError('');
@@ -2480,9 +2621,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
                         const fileInput = document.getElementById('image-upload') as HTMLInputElement;
                         if (fileInput) fileInput.value = '';
                       }}
-                      className="text-xs text-red-500 hover:text-red-700 underline"
+                      className="w-full px-4 py-3 bg-red-100 text-red-700 rounded-lg text-sm sm:text-base font-medium hover:bg-red-200 active:bg-red-300 transition-colors touch-manipulation"
                     >
-                      Try again with a different image
+                      🔄 Try again with a different image
                     </button>
                     <button
                       onClick={() => {
@@ -2495,9 +2636,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
                           }
                         }
                       }}
-                      className="text-xs text-blue-500 hover:text-blue-700 underline"
+                      className="w-full px-4 py-3 bg-blue-100 text-blue-700 rounded-lg text-sm sm:text-base font-medium hover:bg-blue-200 active:bg-blue-300 transition-colors touch-manipulation"
                     >
-                      Or enter IMEI manually
+                      ✏️ Enter IMEI manually
                     </button>
                     <button
                       onClick={() => {
@@ -2510,9 +2651,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
                           }
                         }
                       }}
-                      className="text-xs text-green-500 hover:text-green-700 underline"
+                      className="w-full px-4 py-3 bg-green-100 text-green-700 rounded-lg text-sm sm:text-base font-medium hover:bg-green-200 active:bg-green-300 transition-colors touch-manipulation"
                     >
-                      Or extract IMEI from image text
+                      🔍 Extract IMEI from image text
                     </button>
                     <button
                       onClick={async () => {
@@ -2525,9 +2666,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
                           initializeScanner();
                         }, 100);
                       }}
-                      className="text-xs text-blue-500 hover:text-blue-700 underline"
+                      className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg text-sm sm:text-base font-medium hover:bg-blue-700 active:bg-blue-800 transition-colors touch-manipulation"
                     >
-                      📷 Switch to Camera Scanner (Better for barcodes)
+                      📷 Switch to Camera Scanner
                     </button>
                   </div>
                 </div>
