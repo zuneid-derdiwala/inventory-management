@@ -36,15 +36,15 @@ const ForgotPassword = () => {
 
   if (success) {
     return (
-      <div className="flex flex-1 items-center justify-center p-4">
+      <div className="flex flex-1 items-center justify-center p-4 sm:p-6">
         <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold text-green-600">Check Your Email</CardTitle>
-            <CardDescription>
+          <CardHeader className="text-center p-4 sm:p-6">
+            <CardTitle className="text-xl sm:text-2xl font-bold text-green-600">Check Your Email</CardTitle>
+            <CardDescription className="text-sm sm:text-base">
               We've sent a password reset link to your email address
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-4 sm:p-6">
             <Alert>
               <AlertDescription>
                 Please check your email and click the link to reset your password. 
@@ -54,7 +54,7 @@ const ForgotPassword = () => {
             
             <div className="flex flex-col gap-2">
               <Link to="/login">
-                <Button variant="outline" className="w-full">
+                <Button variant="outline" className="w-full px-4 py-3 text-sm sm:text-base touch-manipulation">
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   Back to Login
                 </Button>
@@ -67,15 +67,15 @@ const ForgotPassword = () => {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center p-4">
+    <div className="flex flex-1 items-center justify-center p-4 sm:p-6">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Forgot Password</CardTitle>
-          <CardDescription>
+        <CardHeader className="text-center p-4 sm:p-6">
+          <CardTitle className="text-xl sm:text-2xl font-bold">Forgot Password</CardTitle>
+          <CardDescription className="text-sm sm:text-base">
             Enter your email address and we'll send you a link to reset your password
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <Alert variant="destructive">
@@ -84,7 +84,7 @@ const ForgotPassword = () => {
             )}
             
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="text-sm sm:text-base font-medium">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -93,10 +93,11 @@ const ForgotPassword = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={isLoading}
+                className="text-sm sm:text-base"
               />
             </div>
             
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full px-4 py-3 text-sm sm:text-base touch-manipulation" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

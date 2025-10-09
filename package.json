@@ -8,7 +8,13 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:scanner": "node src/tests/runScannerTests.js",
+    "test:imei": "vitest run src/tests/imeiExtraction.test.ts",
+    "test:qr": "vitest run src/tests/QrScanner.test.tsx",
+    "test:images": "node src/tests/imageStorageTest.js",
+    "test:image-scanning": "vitest run src/tests/imageScanning.test.ts",
+    "test:real-images": "vitest run src/tests/realImageScanning.test.ts"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",
@@ -55,7 +61,6 @@
     "input-otp": "^1.2.4",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.462.0",
-    "next-themes": "^0.3.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",

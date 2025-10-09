@@ -3,7 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>dyad-generated-app</title>
+    <meta name="theme-color" content="#ffffff" />
+    <title>Inventory Management</title>
+    <script>
+      // Prevent flash of unstyled content
+      (function() {
+        const theme = localStorage.getItem('theme') || 'system';
+        let actualTheme = 'light';
+        
+        if (theme === 'dark') {
+          actualTheme = 'dark';
+        } else if (theme === 'system') {
+          actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        
+        document.documentElement.classList.add(actualTheme);
+      })();
+    </script>
   </head>
 
   <body>

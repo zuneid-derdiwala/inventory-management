@@ -599,20 +599,45 @@ const QrScanner: React.FC<QrScannerProps> = ({
       // Start camera with Html5Qrcode but only for video stream
       html5QrcodeRef.current = new Html5Qrcode(qrCodeContainerId);
       
-      await html5QrcodeRef.current.start(
-        cameraId,
-        {
-          fps: 10,
-          qrbox: { width: 350, height: 350 },
+      // Mobile-optimized configuration
+      const config = {
+        fps: 10,
+        qrbox: { width: 300, height: 300 }, // Smaller for mobile
+        videoConstraints: {
+          facingMode: "environment",
+          width: { ideal: 1280, min: 640 }, // Lower resolution for mobile
+          height: { ideal: 720, min: 480 }
+        }
+      };
+      
+      // Add mobile-specific error handling
+      try {
+        await html5QrcodeRef.current.start(
+          cameraId,
+          config,
+          undefined, // No callback - we'll handle QR detection manually
+          undefined  // No error callback
+        );
+      } catch (startError: any) {
+        console.error("Html5Qrcode start error:", startError);
+        
+        // Try with minimal configuration for mobile
+        const minimalConfig = {
+          fps: 5,
+          qrbox: { width: 250, height: 250 },
           videoConstraints: {
-            facingMode: "environment",
-            width: { ideal: 1920, min: 1280 },
-            height: { ideal: 1080, min: 720 }
+            facingMode: "environment"
           }
-        },
-        undefined, // No callback - we'll handle QR detection manually
-        undefined  // No error callback
-      );
+        };
+        
+        console.log("Retrying with minimal configuration for mobile...");
+        await html5QrcodeRef.current.start(
+          cameraId,
+          minimalConfig,
+          undefined,
+          undefined
+        );
+      }
       
       console.log("Direct QR scanner started, beginning jsQR processing...");
       setIsInitialized(true);
@@ -727,7 +752,25 @@ const QrScanner: React.FC<QrScannerProps> = ({
       
     } catch (error: any) {
       console.error("Direct QR scanner initialization error:", error);
-      setErrorMessage(`Failed to start direct QR scanner: ${error.message}`);
+      
+      // Provide more specific error messages for mobile browsers
+      let errorMessage = "Failed to start direct QR scanner";
+      
+      if (error.message) {
+        if (error.message.includes("NotAllowedError") || error.message.includes("Permission denied")) {
+          errorMessage = "Camera permission denied. Please allow camera access and try again.";
+        } else if (error.message.includes("NotFoundError") || error.message.includes("No camera found")) {
+          errorMessage = "No camera found. Please check if your device has a camera.";
+        } else if (error.message.includes("NotSupportedError")) {
+          errorMessage = "Camera not supported on this device. Please try a different browser.";
+        } else if (error.message.includes("NotReadableError")) {
+          errorMessage = "Camera is being used by another application. Please close other apps and try again.";
+        } else {
+          errorMessage = `Failed to start direct QR scanner: ${error.message}`;
+        }
+      }
+      
+      setErrorMessage(errorMessage);
       setHasError(true);
     }
   }, [qrCodeContainerId, onScanSuccess]);
@@ -2022,7 +2065,13 @@ const QrScanner: React.FC<QrScannerProps> = ({
       console.log("Scanner mode:", qrScanMode);
       if (qrScanMode === 'qr') {
         console.log("Attempting direct QR scanner initialization...");
-        await startDirectQRScanner();
+        try {
+          await startDirectQRScanner();
+        } catch (directError) {
+          console.error("Direct QR scanner failed, falling back to barcode scanner:", directError);
+          console.log("Falling back to barcode scanner for better mobile compatibility...");
+          await initializeScannerDirect();
+        }
       } else {
         console.log("Attempting barcode scanner initialization...");
         await initializeScannerDirect();
@@ -2035,7 +2084,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
     } finally {
       isInitializingRef.current = false;
     }
-  }, [onScanSuccess, onScanError, qrCodeContainerId, hasError, isInitialized, checkCameraPermission, requestCameraPermission, getBrowserInfo, getScannerConfig, waitForContainer, initializeScannerDirect, startDirectQRScanner, qrScanMode]);
+  }, [onScanSuccess, onScanError, qrCodeContainerId, hasError, isInitialized, checkCameraPermission, requestCameraPermission, getBrowserInfo, getScannerConfig, waitForContainer, initializeScannerDirect, qrScanMode]);
 
   // Camera will only start when user explicitly clicks the camera button
 
@@ -2277,6 +2326,11 @@ const QrScanner: React.FC<QrScannerProps> = ({
                   : "Uses jsQR directly for QR codes only, optimized for speed"
                 }
               </p>
+              {qrScanMode === 'qr' && (
+                <p className="text-xs text-orange-600 text-center mt-1">
+                  ⚠️ Direct QR scanner may not work on all mobile browsers. If it fails, try the Barcode Scanner instead.
+                </p>
+              )}
             </div>
           </div>
         )}
