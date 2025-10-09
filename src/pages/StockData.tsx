@@ -160,7 +160,9 @@ const StockData = () => {
 
   // Filter for display - only show models with in-stock items in Inventory Details
   const displayItems = useMemo(() => {
-    return inStockItems.filter(item => item.inStock > 0);
+    return inStockItems
+      .filter(item => item.inStock > 0)
+      .sort((a, b) => a.model.localeCompare(b.model)); // Sort alphabetically by model name
   }, [inStockItems]);
 
   // Calculate user-specific summary (for both admin and regular users)
@@ -411,7 +413,7 @@ const StockData = () => {
                   return (
                     <li key={index} className="border rounded-md">
                       <div 
-                        className="p-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                        className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
                         onClick={() => toggleExpanded(item.model)}
                       >
                         <div className="flex justify-between items-center">
@@ -432,51 +434,51 @@ const StockData = () => {
                       </div>
                       
                       {isExpanded && (
-                        <div className="border-t bg-gray-50 p-4">
-                          <h4 className="font-semibold mb-3 text-gray-700">Entry Details</h4>
+                        <div className="border-t bg-muted/50 p-4">
+                          <h4 className="font-semibold mb-3 text-foreground">Entry Details</h4>
                           <div className="grid gap-3">
                             {modelEntries.map((entry, entryIndex) => (
-                              <div key={entryIndex} className="bg-white p-3 rounded border">
+                              <div key={entryIndex} className="bg-muted/30 p-3 rounded border border-border">
                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                   <div>
-                                    <span className="font-medium text-gray-600">IMEI:</span>
-                                    <span className="ml-2">{entry.imei}</span>
+                                    <span className="font-medium text-muted-foreground">IMEI:</span>
+                                    <span className="ml-2 text-foreground">{entry.imei}</span>
                                   </div>
                                   <div>
-                                    <span className="font-medium text-gray-600">Brand:</span>
-                                    <span className="ml-2">{entry.brand || 'N/A'}</span>
+                                    <span className="font-medium text-muted-foreground">Brand:</span>
+                                    <span className="ml-2 text-foreground">{entry.brand || 'N/A'}</span>
                                   </div>
                                   <div>
-                                    <span className="font-medium text-gray-600">Seller:</span>
-                                    <span className="ml-2">{entry.seller || 'N/A'}</span>
+                                    <span className="font-medium text-muted-foreground">Seller:</span>
+                                    <span className="ml-2 text-foreground">{entry.seller || 'N/A'}</span>
                                   </div>
                                   <div>
-                                    <span className="font-medium text-gray-600">Booking Person:</span>
-                                    <span className="ml-2">{entry.bookingPerson || 'N/A'}</span>
+                                    <span className="font-medium text-muted-foreground">Booking Person:</span>
+                                    <span className="ml-2 text-foreground">{entry.bookingPerson || 'N/A'}</span>
                                   </div>
                                   <div>
-                                    <span className="font-medium text-gray-600">Inward Date:</span>
-                                    <span className="ml-2">
+                                    <span className="font-medium text-muted-foreground">Inward Date:</span>
+                                    <span className="ml-2 text-foreground">
                                       {entry.inwardDate ? new Date(entry.inwardDate).toLocaleDateString() : 'N/A'}
                                     </span>
                                   </div>
                                   <div>
-                                    <span className="font-medium text-gray-600">Inward Amount:</span>
-                                    <span className="ml-2">{entry.inwardAmount || 'N/A'}</span>
+                                    <span className="font-medium text-muted-foreground">Inward Amount:</span>
+                                    <span className="ml-2 text-foreground">{entry.inwardAmount || 'N/A'}</span>
                                   </div>
                                   <div>
-                                    <span className="font-medium text-gray-600">Outward Date:</span>
-                                    <span className="ml-2">
+                                    <span className="font-medium text-muted-foreground">Outward Date:</span>
+                                    <span className="ml-2 text-foreground">
                                       {entry.outwardDate ? new Date(entry.outwardDate).toLocaleDateString() : 'N/A'}
                                     </span>
                                   </div>
                                   <div>
-                                    <span className="font-medium text-gray-600">Outward Amount:</span>
-                                    <span className="ml-2">{entry.outwardAmount || 'N/A'}</span>
+                                    <span className="font-medium text-muted-foreground">Outward Amount:</span>
+                                    <span className="ml-2 text-foreground">{entry.outwardAmount || 'N/A'}</span>
                                   </div>
                                   <div>
-                                    <span className="font-medium text-gray-600">Buyer:</span>
-                                    <span className="ml-2">{entry.buyer || 'N/A'}</span>
+                                    <span className="font-medium text-muted-foreground">Buyer:</span>
+                                    <span className="ml-2 text-foreground">{entry.buyer || 'N/A'}</span>
                                   </div>
                                 </div>
                               </div>
