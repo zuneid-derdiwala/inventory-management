@@ -455,49 +455,124 @@ const QrScanner: React.FC<QrScannerProps> = ({
       // Draw the current video frame to canvas
       ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
       
-      console.log("🔬 Camera frame captured, using OCR-based IMEI extraction as primary method...");
+      console.log("🔬 Camera frame captured, applying same processing pipeline as upload mode...");
       
-      // Use OCR as the primary and only method for IMEI extraction
-      console.log("🔍 Starting OCR-based IMEI extraction from camera frame...");
-      
+      // Apply the same multi-method detection pipeline as upload mode
       let detectedText = null;
       
+      // Method 1: Try Html5Qrcode for barcode detection (same as upload mode)
+      console.log("Trying Html5Qrcode for barcode detection on camera frame...");
       try {
-        const imeiPatterns = await extractIMEIsFromImage(canvas);
+        // Convert canvas to blob and then to File
+        const blob = await new Promise<Blob>((resolve) => {
+          canvas.toBlob((blob) => {
+            resolve(blob!);
+          }, 'image/png');
+        });
+        const imageFile = new File([blob], 'camera-frame.png', { type: 'image/png' });
         
-        if (imeiPatterns.length > 0) {
-          // Filter out product barcodes
-          const validImeis = imeiPatterns.filter(imei => {
-            if (imei.startsWith('693') || imei.startsWith('690') || imei.startsWith('691') || 
-                imei.startsWith('692') || imei.startsWith('694') || imei.startsWith('695') ||
-                imei === '6932204509475' || imei === '693220450947') {
-              console.log("OCR filtering out product barcode:", imei);
-              return false;
-            }
-            return true;
-          });
-          
-          if (validImeis.length > 0) {
-            // Prioritize the first valid IMEI (IMEI1)
-            const firstImei = validImeis[0];
-            const validImei = imeiIsValid(firstImei) ? firstImei : validImeis.find(imei => imeiIsValid(imei)) || firstImei;
-            detectedText = validImei;
-            console.log("OCR extracted valid IMEI from camera frame:", validImei);
-            console.log("All IMEIs found via OCR:", validImeis);
+        // Create a temporary container for Html5Qrcode
+        const tempContainer = document.createElement('div');
+        tempContainer.id = 'temp-camera-scanner';
+        tempContainer.style.display = 'none';
+        document.body.appendChild(tempContainer);
+        
+        const html5Qrcode = new Html5Qrcode("temp-camera-scanner");
+        const result = await html5Qrcode.scanFile(imageFile, true);
+        if (result) {
+          // Only accept if it's a valid IMEI number (15 digits starting with 8 or 3)
+          if (result.length === 15 && (result.startsWith('8') || result.startsWith('3')) && imeiIsValid(result)) {
+            detectedText = result;
+            console.log("Html5Qrcode detected valid IMEI from camera frame:", result);
+          } else {
+            console.log("Html5Qrcode detected non-IMEI barcode from camera frame, ignoring:", result);
+            detectedText = null;
           }
         }
-      } catch (extractionError) {
-        console.log("❌ OCR-based IMEI extraction from camera frame failed:", extractionError);
+        
+        // Clean up the temporary container
+        document.body.removeChild(tempContainer);
+      } catch (html5Error) {
+        console.log("Html5Qrcode on camera frame failed:", html5Error);
+        // Clean up the temporary container if it exists
+        const tempContainer = document.getElementById('temp-camera-scanner');
+        if (tempContainer) {
+          document.body.removeChild(tempContainer);
+        }
       }
       
-      // Return the detected IMEI if found
-      if (detectedText) {
-        console.log("✅ OCR successfully extracted IMEI from camera frame:", detectedText);
-        return detectedText;
-      } else {
-        console.log("🔄 OCR did not find any IMEI in camera frame");
-        return null;
+      // Method 2: OCR-based IMEI extraction from camera frame (same as upload mode)
+      if (!detectedText) {
+        console.log("Trying OCR-based IMEI extraction from camera frame...");
+        try {
+          const imeiPatterns = await extractIMEIsFromImage(canvas);
+          
+          if (imeiPatterns.length > 0) {
+            // Filter out product barcodes
+            const validImeis = imeiPatterns.filter(imei => {
+              if (imei.startsWith('693') || imei.startsWith('690') || imei.startsWith('691') || 
+                  imei.startsWith('692') || imei.startsWith('694') || imei.startsWith('695') ||
+                  imei === '6932204509475' || imei === '693220450947') {
+                console.log("OCR filtering out product barcode:", imei);
+                return false;
+              }
+              return true;
+            });
+            
+            if (validImeis.length > 0) {
+              // Prioritize the first valid IMEI (IMEI1)
+              const firstImei = validImeis[0];
+              const validImei = imeiIsValid(firstImei) ? firstImei : validImeis.find(imei => imeiIsValid(imei)) || firstImei;
+              detectedText = validImei;
+              console.log("OCR extracted valid IMEI from camera frame:", validImei);
+              console.log("All IMEIs found via OCR:", validImeis);
+            }
+          }
+        } catch (extractionError) {
+          console.log("OCR-based IMEI extraction from camera frame failed:", extractionError);
+        }
       }
+      
+      // Method 3: Standard QR code detection (same as upload mode)
+      if (!detectedText) {
+        console.log("Trying QR code detection on camera frame...");
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'attemptBoth'
+        });
+        
+        if (qrCode) {
+          detectedText = qrCode.data;
+          console.log("QR code detected from camera frame:", detectedText);
+        }
+      }
+      
+      // Final validation: Only accept if it's a valid IMEI number
+      if (detectedText) {
+        if (detectedText.length === 15 && (detectedText.startsWith('8') || detectedText.startsWith('3')) && imeiIsValid(detectedText)) {
+          console.log("Valid IMEI detected from camera frame:", detectedText);
+          return detectedText;
+        }
+        
+        // Extract both IMEI and mobile numbers from the detected text
+        const { imeis, mobiles } = extractNumbersFromText(detectedText);
+        if (imeis.length > 0) {
+          // Prioritize the first IMEI (IMEI1) for phone packaging
+          const firstImei = imeis[0];
+          const validImei = imeiIsValid(firstImei) ? firstImei : imeis.find(imei => imeiIsValid(imei)) || firstImei;
+          console.log("IMEI extracted from camera frame (prioritizing first):", validImei);
+          console.log("All IMEIs found:", imeis);
+          return validImei;
+        } else if (mobiles.length > 0) {
+          // Use the first mobile number found
+          const mobileNumber = mobiles[0];
+          console.log("Mobile number extracted from camera frame:", mobileNumber);
+          return mobileNumber;
+        }
+      }
+      
+      console.log("Advanced processing did not find valid IMEI in camera frame");
+      return null;
     } catch (error) {
       console.log("❌ OCR processing of camera frame failed:", error);
       return null;
