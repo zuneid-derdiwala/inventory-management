@@ -310,6 +310,8 @@ const QrScanner: React.FC<QrScannerProps> = ({
   const [emergencyStop, setEmergencyStop] = useState(false);
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
   const [qrScanMode, setQrScanMode] = useState<'barcode' | 'qr'>('barcode');
+  const [ocrProcessingEnabled, setOcrProcessingEnabled] = useState(false);
+  const [shouldStopProcessing, setShouldStopProcessing] = useState(true);
   
   // Function to switch between camera and upload modes
   const switchToUploadMode = useCallback(async () => {
@@ -414,7 +416,13 @@ const QrScanner: React.FC<QrScannerProps> = ({
   // Function to capture camera frame and process with same advanced pipeline as upload mode
   const captureAndProcessCameraFrame = useCallback(async (): Promise<string | null> => {
     try {
-      console.log("Attempting to capture camera frame for advanced processing...");
+      // Check if OCR processing is enabled and scanner is active
+      if (!ocrProcessingEnabled || !isScannerActive || !isInitialized || emergencyStop || shouldStopProcessing) {
+        console.log("🛑 OCR processing not enabled or scanner not active, skipping");
+        return null;
+      }
+      
+      console.log("🔬 Starting OCR-based IMEI extraction from camera frame...");
       
       // Get the video element from the scanner container
       const container = document.getElementById(qrCodeContainerId);
@@ -429,6 +437,8 @@ const QrScanner: React.FC<QrScannerProps> = ({
         console.log("Video element not ready for capture");
         return null;
       }
+      
+      console.log("📹 Camera frame captured, dimensions:", videoElement.videoWidth, "x", videoElement.videoHeight);
       
       // Create a canvas to capture the current frame
       const canvas = document.createElement('canvas');
@@ -445,310 +455,176 @@ const QrScanner: React.FC<QrScannerProps> = ({
       // Draw the current video frame to canvas
       ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
       
-      console.log("Camera frame captured, applying same processing pipeline as upload mode...");
+      console.log("🔬 Camera frame captured, using OCR-based IMEI extraction as primary method...");
       
-      // Apply the same multi-method detection pipeline as upload mode
+      // Use OCR as the primary and only method for IMEI extraction
+      console.log("🔍 Starting OCR-based IMEI extraction from camera frame...");
+      
       let detectedText = null;
       
-      // Method 1: Try Html5Qrcode for barcode detection (same as upload mode)
-      console.log("Trying Html5Qrcode for barcode detection on camera frame...");
       try {
-        // Convert canvas to blob and then to File
-        const blob = await new Promise<Blob>((resolve) => {
-          canvas.toBlob((blob) => {
-            resolve(blob!);
-          }, 'image/png');
-        });
-        const imageFile = new File([blob], 'camera-frame.png', { type: 'image/png' });
+        const imeiPatterns = await extractIMEIsFromImage(canvas);
         
-        // Create a temporary container for Html5Qrcode
-        const tempContainer = document.createElement('div');
-        tempContainer.id = 'temp-camera-scanner';
-        tempContainer.style.display = 'none';
-        document.body.appendChild(tempContainer);
-        
-        const html5Qrcode = new Html5Qrcode("temp-camera-scanner");
-        const result = await html5Qrcode.scanFile(imageFile, true);
-        if (result) {
-          // Only accept if it's a valid IMEI number (15 digits starting with 8 or 3)
-          if (result.length === 15 && (result.startsWith('8') || result.startsWith('3')) && imeiIsValid(result)) {
-            detectedText = result;
-            console.log("Html5Qrcode detected valid IMEI from camera frame:", result);
-          } else {
-            console.log("Html5Qrcode detected non-IMEI barcode from camera frame, ignoring:", result);
-            detectedText = null;
-          }
-        }
-        
-        // Clean up the temporary container
-        document.body.removeChild(tempContainer);
-      } catch (html5Error) {
-        console.log("Html5Qrcode on camera frame failed:", html5Error);
-        // Clean up the temporary container if it exists
-        const tempContainer = document.getElementById('temp-camera-scanner');
-        if (tempContainer) {
-          document.body.removeChild(tempContainer);
-        }
-      }
-      
-      // Method 2: OCR-based IMEI extraction from camera frame (same as upload mode)
-      if (!detectedText) {
-        console.log("Trying OCR-based IMEI extraction from camera frame...");
-        try {
-          const imeiPatterns = await extractIMEIsFromImage(canvas);
-          
-          if (imeiPatterns.length > 0) {
-            // Filter out product barcodes
-            const validImeis = imeiPatterns.filter(imei => {
-              if (imei.startsWith('693') || imei.startsWith('690') || imei.startsWith('691') || 
-                  imei.startsWith('692') || imei.startsWith('694') || imei.startsWith('695') ||
-                  imei === '6932204509475' || imei === '693220450947') {
-                console.log("OCR filtering out product barcode:", imei);
-                return false;
-              }
-              return true;
-            });
-            
-            if (validImeis.length > 0) {
-              // Prioritize the first valid IMEI (IMEI1)
-              const firstImei = validImeis[0];
-              const validImei = imeiIsValid(firstImei) ? firstImei : validImeis.find(imei => imeiIsValid(imei)) || firstImei;
-              detectedText = validImei;
-              console.log("OCR extracted valid IMEI from camera frame:", validImei);
-              console.log("All IMEIs found via OCR:", validImeis);
+        if (imeiPatterns.length > 0) {
+          // Filter out product barcodes
+          const validImeis = imeiPatterns.filter(imei => {
+            if (imei.startsWith('693') || imei.startsWith('690') || imei.startsWith('691') || 
+                imei.startsWith('692') || imei.startsWith('694') || imei.startsWith('695') ||
+                imei === '6932204509475' || imei === '693220450947') {
+              console.log("OCR filtering out product barcode:", imei);
+              return false;
             }
+            return true;
+          });
+          
+          if (validImeis.length > 0) {
+            // Prioritize the first valid IMEI (IMEI1)
+            const firstImei = validImeis[0];
+            const validImei = imeiIsValid(firstImei) ? firstImei : validImeis.find(imei => imeiIsValid(imei)) || firstImei;
+            detectedText = validImei;
+            console.log("OCR extracted valid IMEI from camera frame:", validImei);
+            console.log("All IMEIs found via OCR:", validImeis);
           }
-        } catch (extractionError) {
-          console.log("OCR-based IMEI extraction from camera frame failed:", extractionError);
         }
+      } catch (extractionError) {
+        console.log("❌ OCR-based IMEI extraction from camera frame failed:", extractionError);
       }
       
-      // Method 3: Standard QR code detection (same as upload mode)
-      if (!detectedText) {
-        console.log("Trying QR code detection on camera frame...");
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: 'attemptBoth'
-        });
-        
-        if (qrCode) {
-          detectedText = qrCode.data;
-          console.log("QR code detected from camera frame:", detectedText);
-        }
-      }
-      
-      // Final validation: Only accept if it's a valid IMEI number
+      // Return the detected IMEI if found
       if (detectedText) {
-        if (detectedText.length === 15 && (detectedText.startsWith('8') || detectedText.startsWith('3')) && imeiIsValid(detectedText)) {
-          console.log("Valid IMEI detected from camera frame:", detectedText);
-          return detectedText;
-        }
-        
-        // Extract both IMEI and mobile numbers from the detected text
-        const { imeis, mobiles } = extractNumbersFromText(detectedText);
-        if (imeis.length > 0) {
-          // Prioritize the first IMEI (IMEI1) for phone packaging
-          const firstImei = imeis[0];
-          const validImei = imeiIsValid(firstImei) ? firstImei : imeis.find(imei => imeiIsValid(imei)) || firstImei;
-          console.log("IMEI extracted from camera frame (prioritizing first):", validImei);
-          console.log("All IMEIs found:", imeis);
-          return validImei;
-        } else if (mobiles.length > 0) {
-          // Use the first mobile number found
-          const mobileNumber = mobiles[0];
-          console.log("Mobile number extracted from camera frame:", mobileNumber);
-          return mobileNumber;
-        }
+        console.log("✅ OCR successfully extracted IMEI from camera frame:", detectedText);
+        return detectedText;
+      } else {
+        console.log("🔄 OCR did not find any IMEI in camera frame");
+        return null;
       }
-      
-      console.log("Advanced processing did not find valid IMEI in camera frame");
-      return null;
     } catch (error) {
-      console.log("Advanced processing of camera frame failed:", error);
+      console.log("❌ OCR processing of camera frame failed:", error);
       return null;
     }
-  }, [qrCodeContainerId]);
+  }, [qrCodeContainerId, isScannerActive, isInitialized, emergencyStop, ocrProcessingEnabled]);
 
-  // Direct QR scanner using jsQR on camera stream
+  // Direct QR scanner using native camera API for better mobile support
   const startDirectQRScanner = useCallback(async () => {
     try {
-      console.log("Starting direct QR scanner...");
+      console.log("Starting direct QR scanner with native camera API...");
       
-      // Get camera devices
-      const devices = await Html5Qrcode.getCameras();
-      if (devices.length === 0) {
-        setErrorMessage("No camera found. Please connect a camera and try again.");
+      // Prevent multiple initializations
+      if (isScannerActive || isInitialized || isInitializing || emergencyStop) {
+        console.log("🛑 Scanner already active or emergency stopped, skipping initialization");
+        return;
+      }
+      
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setErrorMessage("Camera not supported on this device. Please try a different browser.");
         setHasError(true);
         return;
       }
       
-      // Prefer back camera
-      let cameraId = devices[0].id;
-      const backCamera = devices.find(device => 
-        device.label.toLowerCase().includes('back') || 
-        device.label.toLowerCase().includes('rear') ||
-        device.label.toLowerCase().includes('environment') ||
-        device.label.toLowerCase().includes('world')
-      );
-      
-      if (backCamera) {
-        cameraId = backCamera.id;
-        setSelectedCameraId(backCamera.id);
+      // Create video element directly
+      const container = document.getElementById(qrCodeContainerId);
+      if (!container) {
+        setErrorMessage("Scanner container not found.");
+        setHasError(true);
+        return;
       }
       
-      // Start camera with Html5Qrcode but only for video stream
-      html5QrcodeRef.current = new Html5Qrcode(qrCodeContainerId);
+      // Clear container
+      container.innerHTML = '';
       
-      // Mobile-optimized configuration
-      const config = {
-        fps: 10,
-        qrbox: { width: 300, height: 300 }, // Smaller for mobile
-        videoConstraints: {
-          facingMode: "environment",
-          width: { ideal: 1280, min: 640 }, // Lower resolution for mobile
-          height: { ideal: 720, min: 480 }
-        }
+      // Create video element
+      const video = document.createElement('video');
+      video.id = 'qr-video';
+      video.style.width = '100%';
+      video.style.height = '100%';
+      video.style.objectFit = 'cover';
+      video.setAttribute('playsinline', 'true');
+      video.setAttribute('webkit-playsinline', 'true');
+      container.appendChild(video);
+      
+      // Mobile-optimized camera constraints
+      const constraints = {
+        video: {
+          facingMode: { ideal: "environment" }, // Back camera
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
+          frameRate: { ideal: 15, max: 30 }
+        },
+        audio: false
       };
       
-      // Add mobile-specific error handling
-      try {
-        await html5QrcodeRef.current.start(
-          cameraId,
-          config,
-          undefined, // No callback - we'll handle QR detection manually
-          undefined  // No error callback
-        );
-      } catch (startError: any) {
-        console.error("Html5Qrcode start error:", startError);
-        
-        // Try with minimal configuration for mobile
-        const minimalConfig = {
-          fps: 5,
-          qrbox: { width: 250, height: 250 },
-          videoConstraints: {
-            facingMode: "environment"
-          }
-        };
-        
-        console.log("Retrying with minimal configuration for mobile...");
-        await html5QrcodeRef.current.start(
-          cameraId,
-          minimalConfig,
-          undefined,
-          undefined
-        );
-      }
+      // Get camera stream
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
       
-      console.log("Direct QR scanner started, beginning jsQR processing...");
+      // Wait for video to be ready
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => {
+          video.play().then(resolve).catch(reject);
+        };
+        video.onerror = reject;
+      });
+      
+      console.log("Direct QR scanner started, beginning OCR processing...");
       setIsInitialized(true);
       setIsScannerActive(true);
+      setOcrProcessingEnabled(true);
       
-      // Start jsQR processing loop
-      const processQRCode = async () => {
-        if (!html5QrcodeRef.current) {
+      // Start OCR-based processing loop as primary method
+      const processWithOCR = async () => {
+        // Multiple comprehensive checks to prevent auto-start
+        if (!isScannerActive || !isInitialized || emergencyStop || !video || shouldStopProcessing || !ocrProcessingEnabled) {
+          console.log("🛑 Scanner not properly active or processing stopped, stopping OCR processing");
+          return;
+        }
+        
+        // Additional check for video readiness
+        if (video.readyState < 2) {
+          console.log("🔄 Video not ready, waiting...");
+          // Only continue if scanner is still active
+          if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessing && ocrProcessingEnabled) {
+            setTimeout(processWithOCR, 100);
+          }
           return;
         }
         
         try {
-          // Get the video element
-          const container = document.getElementById(qrCodeContainerId);
-          const videoElement = container?.querySelector('video') as HTMLVideoElement;
+          console.log("🔬 Processing camera frame with OCR as primary method...");
           
-          if (videoElement && videoElement.readyState >= 2) {
-            // Create canvas to capture frame
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
+          // Use OCR as the primary detection method
+          const ocrResult = await captureAndProcessCameraFrame();
+          if (ocrResult) {
+            console.log("✅ OCR-based IMEI extraction successful:", ocrResult);
+            onScanSuccess(ocrResult);
             
-            if (ctx) {
-              canvas.width = videoElement.videoWidth;
-              canvas.height = videoElement.videoHeight;
-              ctx.drawImage(videoElement, 0, 0);
-              
-              // Get image data for jsQR
-              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              
-              // Try jsQR detection
-              const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
-                inversionAttempts: 'attemptBoth'
-              });
-              
-              if (qrCode && qrCode.data) {
-                console.log("Direct QR scanner detected:", qrCode.data);
-                
-                // Apply same IMEI validation as other methods
-                let finalResult = null;
-                
-                // Check if it's a direct valid IMEI
-                if (qrCode.data.length === 15 && (qrCode.data.startsWith('8') || qrCode.data.startsWith('3')) && imeiIsValid(qrCode.data)) {
-                  console.log("Direct QR scanner detected valid IMEI:", qrCode.data);
-                  finalResult = qrCode.data;
-                } else {
-                  // Extract IMEI from QR text
-                  const { imeis, mobiles } = extractNumbersFromText(qrCode.data);
-                  
-                  if (imeis.length > 0) {
-                    const validImeis = imeis.filter(imei => {
-                      if (imei.startsWith('693') || imei.startsWith('690') || imei.startsWith('691') || 
-                          imei.startsWith('692') || imei.startsWith('694') || imei.startsWith('695') ||
-                          imei === '6932204509475' || imei === '693220450947') {
-                        return false;
-                      }
-                      return true;
-                    });
-                    
-                    if (validImeis.length > 0) {
-                      const firstImei = validImeis[0];
-                      const validImei = imeiIsValid(firstImei) ? firstImei : validImeis.find(imei => imeiIsValid(imei)) || firstImei;
-                      finalResult = validImei;
-                    }
-                  } else if (mobiles.length > 0) {
-                    finalResult = mobiles[0];
-                  }
-                }
-                
-                if (finalResult) {
-                  console.log("Direct QR scanner successful:", finalResult);
-                  onScanSuccess(finalResult);
-                  
-                  // Stop scanner
-                  if (html5QrcodeRef.current) {
-                    await safeStopScanner(html5QrcodeRef.current);
-                  }
-                  return;
-                } else {
-                  console.log("Direct QR scanner detected QR but no valid IMEI found, trying advanced processing...");
-                  
-                  // If QR detection didn't find valid IMEI, try the same advanced processing as upload mode
-                  try {
-                    const advancedResult = await captureAndProcessCameraFrame();
-                    if (advancedResult) {
-                      console.log("Advanced processing found IMEI:", advancedResult);
-                      onScanSuccess(advancedResult);
-                      
-                      // Stop scanner
-                      if (html5QrcodeRef.current) {
-                        await safeStopScanner(html5QrcodeRef.current);
-                      }
-                      return;
-                    }
-                  } catch (advancedError) {
-                    console.log("Advanced processing failed:", advancedError);
-                  }
-                }
-              }
-            }
+            // Stop scanner
+            await stopNativeVideo();
+            return;
+          } else {
+            console.log("🔄 OCR didn't find IMEI, continuing scan...");
           }
           
-          // Continue processing
-          setTimeout(processQRCode, 100); // Process every 100ms
+          // Continue processing only if scanner is still active
+          if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessing && ocrProcessingEnabled) {
+            setTimeout(processWithOCR, 2000); // Process every 2 seconds for OCR
+          }
         } catch (error) {
-          console.log("Direct QR processing error:", error);
-          setTimeout(processQRCode, 1000); // Retry after 1 second on error
+          console.log("❌ OCR processing error:", error);
+          // Retry only if scanner is still active
+          if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessing && ocrProcessingEnabled) {
+            setTimeout(processWithOCR, 3000); // Retry after 3 seconds on error
+          }
         }
       };
       
-      // Start the processing loop
-      setTimeout(processQRCode, 1000); // Start after 1 second to let camera initialize
+      // Start the processing loop only if scanner is properly initialized
+      if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessing) {
+        setShouldStopProcessing(false); // Enable processing only when scanner is started
+        setTimeout(processWithOCR, 1000); // Start after 1 second to let camera initialize
+      } else {
+        console.log("🛑 Scanner not properly initialized, skipping OCR processing start");
+      }
       
     } catch (error: any) {
       console.error("Direct QR scanner initialization error:", error);
@@ -756,24 +632,81 @@ const QrScanner: React.FC<QrScannerProps> = ({
       // Provide more specific error messages for mobile browsers
       let errorMessage = "Failed to start direct QR scanner";
       
-      if (error.message) {
-        if (error.message.includes("NotAllowedError") || error.message.includes("Permission denied")) {
-          errorMessage = "Camera permission denied. Please allow camera access and try again.";
-        } else if (error.message.includes("NotFoundError") || error.message.includes("No camera found")) {
-          errorMessage = "No camera found. Please check if your device has a camera.";
-        } else if (error.message.includes("NotSupportedError")) {
-          errorMessage = "Camera not supported on this device. Please try a different browser.";
-        } else if (error.message.includes("NotReadableError")) {
-          errorMessage = "Camera is being used by another application. Please close other apps and try again.";
-        } else {
-          errorMessage = `Failed to start direct QR scanner: ${error.message}`;
+      if (error.name === 'NotAllowedError' || error.message?.includes("Permission denied")) {
+        errorMessage = "Camera permission denied. Please allow camera access and try again.";
+      } else if (error.name === 'NotFoundError' || error.message?.includes("No camera found")) {
+        errorMessage = "No camera found. Please check if your device has a camera.";
+      } else if (error.name === 'NotSupportedError' || error.message?.includes("not supported")) {
+        errorMessage = "Camera not supported on this device. Please try a different browser.";
+      } else if (error.name === 'NotReadableError' || error.message?.includes("in use")) {
+        errorMessage = "Camera is being used by another application. Please close other apps and try again.";
+      } else if (error.name === 'OverconstrainedError') {
+        errorMessage = "Camera constraints not supported. Trying with basic settings...";
+        // Try with basic constraints
+        try {
+          const basicConstraints = {
+            video: { facingMode: "environment" },
+            audio: false
+          };
+          const stream = await navigator.mediaDevices.getUserMedia(basicConstraints);
+          const video = document.getElementById('qr-video') as HTMLVideoElement;
+          if (video) {
+            video.srcObject = stream;
+            await video.play();
+            setIsInitialized(true);
+            setIsScannerActive(true);
+            return;
+          }
+        } catch (retryError) {
+          errorMessage = "Camera access failed. Please try the Barcode Scanner mode instead.";
         }
+      } else {
+        errorMessage = `Failed to start direct QR scanner: ${error.message || error.name}`;
       }
       
       setErrorMessage(errorMessage);
       setHasError(true);
     }
-  }, [qrCodeContainerId, onScanSuccess]);
+  }, [qrCodeContainerId, onScanSuccess, isScannerActive, isInitialized, isInitializing, emergencyStop]);
+
+  // Enhanced stop function for native video elements
+  const stopNativeVideo = useCallback(async () => {
+    try {
+      console.log("Stopping native video scanner...");
+      
+      // Update state immediately
+      setIsScannerActive(false);
+      setIsInitialized(false);
+      setOcrProcessingEnabled(false);
+      setShouldStopProcessing(true);
+      
+      // Stop video stream
+      const video = document.getElementById('qr-video') as HTMLVideoElement;
+      if (video && video.srcObject) {
+        const stream = video.srcObject as MediaStream;
+        stream.getTracks().forEach(track => {
+          track.stop();
+          console.log("Stopped track:", track.kind);
+        });
+        video.srcObject = null;
+      }
+      
+      // Clear the container
+      const container = document.getElementById(qrCodeContainerId);
+      if (container) {
+        container.innerHTML = '';
+      }
+      
+      console.log("Native video scanner stopped successfully");
+    } catch (error) {
+      console.error("Error stopping native video scanner:", error);
+      // Force clear the container even if stop fails
+      const container = document.getElementById(qrCodeContainerId);
+      if (container) {
+        container.innerHTML = '';
+      }
+    }
+  }, [qrCodeContainerId]);
 
   const scanImageFile = useCallback(async (file: File) => {
     // Only allow file scanning in upload mode
@@ -2070,7 +2003,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
         } catch (directError) {
           console.error("Direct QR scanner failed, falling back to barcode scanner:", directError);
           console.log("Falling back to barcode scanner for better mobile compatibility...");
-          await initializeScannerDirect();
+      await initializeScannerDirect();
         }
       } else {
         console.log("Attempting barcode scanner initialization...");
@@ -2091,11 +2024,19 @@ const QrScanner: React.FC<QrScannerProps> = ({
   // Cleanup effect to stop camera when component unmounts or mode changes
   React.useEffect(() => {
     return () => {
+      // Stop all processing immediately
+      setShouldStopProcessing(true);
+      setOcrProcessingEnabled(false);
+      setIsScannerActive(false);
+      setIsInitialized(false);
+      
       // Cleanup on unmount
       if (html5QrcodeRef.current) {
         console.log("Component unmounting - stopping scanner");
         safeStopScanner(html5QrcodeRef.current);
       }
+      // Also cleanup native video if it exists
+      stopNativeVideo();
     };
   }, []);
 
@@ -2421,7 +2362,24 @@ const QrScanner: React.FC<QrScannerProps> = ({
                 if (html5QrcodeRef.current) {
                   safeStopScanner(html5QrcodeRef.current);
                 }
-                console.log("Emergency stop activated - scanner disabled");
+                // Also stop native video if it exists
+                stopNativeVideo();
+                // Reset all scanner states
+                setIsInitialized(false);
+                setIsScannerActive(false);
+                setIsInitializing(false);
+                setOcrProcessingEnabled(false);
+                setShouldStopProcessing(true);
+                setHasError(false);
+                setErrorMessage("");
+                setErrorCount(0);
+                setLastErrorTime(0);
+                // Clear any pending timeouts
+                if (scanTimeout) {
+                  clearTimeout(scanTimeout);
+                  setScanTimeout(null);
+                }
+                console.log("Emergency stop activated - scanner disabled and all states reset");
               }}
               className="w-full px-4 py-3 sm:py-4 bg-red-600 text-white rounded-lg text-sm sm:text-base font-medium hover:bg-red-700 active:bg-red-800 transition-colors touch-manipulation"
             >
@@ -2447,8 +2405,19 @@ const QrScanner: React.FC<QrScannerProps> = ({
                   setIsInitialized(false);
                   setIsScannerActive(false);
                   setIsInitializing(false);
+                  setOcrProcessingEnabled(false);
+                  setShouldStopProcessing(false);
                   setErrorCount(0);
-                  console.log("Emergency stop deactivated - scanner re-enabled");
+                  setLastErrorTime(0);
+                  // Clear any pending timeouts
+                  if (scanTimeout) {
+                    clearTimeout(scanTimeout);
+                    setScanTimeout(null);
+                  }
+                  // Clear scanner references
+                  html5QrcodeRef.current = null;
+                  scannerRef.current = null;
+                  console.log("Scanner reset - ready to start again");
                 }}
                 className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
               >
@@ -2786,7 +2755,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
             )}
             {scanMode === 'camera' && isInitialized && (
               <div className="w-full p-4 text-center">
-                <div className="mb-4">
+                <div className="mb-4 space-y-2">
                   <button
                     onClick={async () => {
                       console.log("Manual OCR trigger for camera...");
@@ -2803,13 +2772,38 @@ const QrScanner: React.FC<QrScannerProps> = ({
                         alert("OCR processing failed. Please try again or use manual input.");
                       }
                     }}
-                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-sm"
+                    className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center justify-center space-x-2"
                   >
-                    🔍 Try OCR Text Recognition
+                    <span>🔍</span>
+                    <span>Try OCR Text Recognition</span>
+                  </button>
+                  
+                  <button
+                    onClick={async () => {
+                      console.log("Advanced OCR processing for camera...");
+                      try {
+                        // Try multiple OCR attempts with different settings
+                        const ocrResult = await captureAndProcessCameraFrame();
+                        if (ocrResult) {
+                          console.log("Advanced OCR successful:", ocrResult);
+                          onScanSuccess(ocrResult);
+                        } else {
+                          alert("Advanced OCR could not detect IMEI. The image might be too blurry or the IMEI might not be visible in the current view.");
+                        }
+                      } catch (error) {
+                        console.error("Advanced OCR failed:", error);
+                        alert("Advanced OCR processing failed. Please try again or use manual input.");
+                      }
+                    }}
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center justify-center space-x-2"
+                  >
+                    <span>🔬</span>
+                    <span>Advanced OCR Processing</span>
                   </button>
                 </div>
-                <p className="text-xs text-gray-500">
-                  If barcode scanning isn't working, try OCR to read text from the camera view
+                <p className="text-xs text-gray-500 text-center">
+                  If barcode scanning isn't working, try OCR to read text from the camera view. 
+                  Advanced OCR uses enhanced image processing for better text recognition.
                 </p>
               </div>
             )}
