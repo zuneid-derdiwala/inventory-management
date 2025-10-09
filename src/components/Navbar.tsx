@@ -1,10 +1,10 @@
 "use client";
 
-import React from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, Loader2, LogOut, User } from "lucide-react";
+import { Menu, Loader2, LogOut } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ThemeToggle } from "./ThemeToggle";
 import { useData } from "@/context/DataContext";
@@ -23,6 +23,7 @@ const Navbar = () => {
   const isMobile = useIsMobile();
   const { isLoadingData } = useData();
   const { user, signOut, isAdmin } = useAuth();
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
 
   const navLinks = [
     { name: "Entry Form", path: "/entry-form" },
@@ -31,12 +32,13 @@ const Navbar = () => {
     ...(isAdmin ? [{ name: "Manage Data", path: "/manage-data" }] : []),
   ];
 
-  const renderNavLinks = () => (
+  const renderNavLinks = (closeSheet = false) => (
     <>
       {navLinks.map((link) => (
         <Link
           key={link.name}
           to={link.path}
+          onClick={() => closeSheet && setIsSheetOpen(false)}
           className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
         >
           {link.name}
@@ -58,7 +60,7 @@ const Navbar = () => {
 
   if (isMobile) {
     return (
-      <Sheet>
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <SheetTrigger asChild>
           <Button variant="outline" size="icon" className="shrink-0 md:hidden">
             <Menu className="h-5 w-5" />
@@ -67,10 +69,14 @@ const Navbar = () => {
         </SheetTrigger>
         <SheetContent side="left">
           <nav className="grid gap-6 text-lg font-medium">
-            <Link to="/" className="flex items-center gap-2 text-lg font-semibold">
+            <Link 
+              to="/" 
+              onClick={() => setIsSheetOpen(false)}
+              className="flex items-center gap-2 text-lg font-semibold"
+            >
               <span>Inventory App</span>
             </Link>
-            {renderNavLinks()}
+            {renderNavLinks(true)}
             <div className="mt-4 flex flex-col gap-2">
               <ThemeToggle />
               {user && (
@@ -86,7 +92,10 @@ const Navbar = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={handleSignOut}
+                    onClick={() => {
+                      handleSignOut();
+                      setIsSheetOpen(false);
+                    }}
                     className="h-8 w-8 p-0"
                   >
                     <LogOut className="h-4 w-4" />
