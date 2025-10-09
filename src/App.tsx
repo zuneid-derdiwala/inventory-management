@@ -28,6 +28,7 @@ const App = () => (
     <ThemeProvider>
       <TooltipProvider>
         <Toaster />
+        <Sonner />
         <BrowserRouter>
           <AuthProvider>
             <DataProvider>
@@ -87,7 +88,6 @@ const App = () => (
           </DataProvider>
         </AuthProvider>
       </BrowserRouter>
-      <Sonner />
     </TooltipProvider>
     </ThemeProvider>
   </QueryClientProvider>
