@@ -4,63 +4,14 @@ import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useData } from "@/context/DataContext";
-import { useAuth } from "@/context/AuthContext";
-import { supabase } from "@/lib/supabase";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, ChevronRight, User } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 
 const StockData = () => {
   const { database, isLoadingData } = useData();
-  const { user } = useAuth();
-  const [username, setUsername] = useState<string>("");
-  const [isLoadingUsername, setIsLoadingUsername] = useState(false);
-  
-  // Set initial username from email as fallback
-  useEffect(() => {
-    if (user?.email && !username) {
-      setUsername(user.email.split('@')[0] || 'User');
-    }
-  }, [user?.email, username]);
-  
-  // Fetch username from profiles table
-  useEffect(() => {
-    const fetchUsername = async () => {
-      if (user?.id) {
-        console.log('StockData: Fetching username for user:', user.id);
-        setIsLoadingUsername(true);
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('username')
-            .eq('id', user.id)
-            .single();
-          
-          console.log('StockData: Username fetch result:', { data, error });
-          
-          if (error) {
-            console.error('Error fetching username:', error);
-            // Keep the fallback username from email
-          } else if (data?.username) {
-            console.log('StockData: Setting username to:', data.username);
-            setUsername(data.username);
-          }
-        } catch (error) {
-          console.error('Error fetching username:', error);
-        } finally {
-          setIsLoadingUsername(false);
-        }
-      } else {
-        console.log('StockData: No user ID available for username fetch');
-      }
-    };
-    
-    // Add a small delay to ensure user object is fully loaded
-    const timeoutId = setTimeout(fetchUsername, 100);
-    return () => clearTimeout(timeoutId);
-  }, [user?.id]);
   
   // Initialize state from localStorage or defaults
   const [selectedModel, setSelectedModel] = useState<string>(() => {
@@ -101,6 +52,7 @@ const StockData = () => {
   useEffect(() => {
     localStorage.setItem('stockData_selectedBookingPerson', selectedBookingPerson);
   }, [selectedBookingPerson]);
+
 
 
 
@@ -292,35 +244,46 @@ const StockData = () => {
     return result;
   }, [dataSource]);
 
-  // Clear model selection when brand changes
+  // Validate stored filters when data is loaded
   useEffect(() => {
-    if (selectedBrand !== "all") {
+    if (availableModels.length > 0 && availableBrands.length > 0) {
+      // Check if stored model is still valid
+      if (selectedModel !== "all" && !availableModels.includes(selectedModel)) {
+        console.log("StockData: Stored model", selectedModel, "no longer available, keeping selection");
+        // Don't clear, just keep the selection - it will show "no items found" which is correct
+      }
+      
+      // Check if stored brand is still valid
+      if (selectedBrand !== "all" && !availableBrands.includes(selectedBrand)) {
+        console.log("StockData: Stored brand", selectedBrand, "no longer available, keeping selection");
+        // Don't clear, just keep the selection - it will show "no items found" which is correct
+      }
+    }
+  }, [availableModels, availableBrands, selectedModel, selectedBrand]);
+
+  // Clear model selection when brand changes (only when data is loaded)
+  useEffect(() => {
+    if (selectedBrand !== "all" && availableModels.length > 0) {
       // Check if the currently selected model is available for the selected brand
       const isModelAvailable = availableModels.includes(selectedModel);
       if (!isModelAvailable && selectedModel !== "all") {
         console.log("StockData: Model", selectedModel, "not available for brand", selectedBrand, ", clearing model selection");
         setSelectedModel("all");
+        localStorage.setItem('stockData_selectedModel', 'all');
       }
-    } else {
-      // If brand is set to "all", we can keep the current model selection
-      // as it will be filtered appropriately by the availableModels logic
-      console.log("StockData: Brand set to 'all', showing all available models");
     }
   }, [selectedBrand, availableModels, selectedModel]);
 
-  // Clear brand selection when model changes
+  // Clear brand selection when model changes (only when data is loaded)
   useEffect(() => {
-    if (selectedModel !== "all") {
+    if (selectedModel !== "all" && availableBrands.length > 0) {
       // Check if the currently selected brand is available for the selected model
       const isBrandAvailable = availableBrands.includes(selectedBrand);
       if (!isBrandAvailable && selectedBrand !== "all") {
         console.log("StockData: Brand", selectedBrand, "not available for model", selectedModel, ", clearing brand selection");
         setSelectedBrand("all");
+        localStorage.setItem('stockData_selectedBrand', 'all');
       }
-    } else {
-      // If model is set to "all", we can keep the current brand selection
-      // as it will be filtered appropriately by the availableBrands logic
-      console.log("StockData: Model set to 'all', showing all available brands");
     }
   }, [selectedModel, availableBrands, selectedBrand]);
 
@@ -416,37 +379,6 @@ const StockData = () => {
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {/* Welcome Section */}
-      <Card className="col-span-full bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800">
-        <CardContent className="p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-full">
-              <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold text-blue-900 dark:text-blue-100">
-                Welcome to Inventory Data
-              </h2>
-              <p className="text-sm text-blue-700 dark:text-blue-300">
-                Manage your Stock with ease.
-              </p>
-            </div>
-          </div>
-          <div className="text-lg font-medium text-blue-800 dark:text-blue-200">
-            {isLoadingUsername ? (
-              <div className="flex items-center gap-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                <span>Loading profile...</span>
-              </div>
-            ) : username ? (
-              <>Hello, <span className="text-blue-600 dark:text-blue-400 font-semibold">{username}</span>! 👋</>
-            ) : (
-              <>Hello, <span className="text-blue-600 dark:text-blue-400 font-semibold">User</span>! 👋</>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
       <Card className="col-span-full">
         <CardHeader className="p-4 sm:p-6">
           <CardTitle className="uppercase text-center text-lg sm:text-xl">Stock Data</CardTitle>
