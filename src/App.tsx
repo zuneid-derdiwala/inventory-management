@@ -10,6 +10,7 @@ import EntryForm from "./pages/EntryForm";
 import StockData from "./pages/StockData";
 import Database from "./pages/Database";
 import ManageDataPage from "./pages/ManageData";
+import ProfileSettings from "./pages/ProfileSettings";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -80,6 +81,13 @@ const App = () => (
                     <ManageDataPage />
                   </Layout>
                 </AdminRoute>
+              } />
+              <Route path="/profile-settings" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <ProfileSettings />
+                  </Layout>
+                </ProtectedRoute>
               } />
               
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

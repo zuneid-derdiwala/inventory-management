@@ -207,25 +207,98 @@ const Database = () => {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card className="col-span-full">
-          <CardHeader className="flex items-center justify-center space-y-0 pb-2">
-            <CardTitle className="uppercase text-center">All Data Entries</CardTitle>
+          <CardHeader className="flex items-center justify-center space-y-0 pb-2 p-4 sm:p-6">
+            <CardTitle className="uppercase text-center text-lg sm:text-xl flex items-center justify-center gap-2">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+              Loading Database...
+            </CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-6">
+          <CardContent className="grid gap-4 sm:gap-6 p-4 sm:p-6">
+            {/* Summary cards skeleton with shimmer effect */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-center">
+              <div className="bg-green-100 p-4 sm:p-6 rounded-lg relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+                <Skeleton className="h-8 w-12 mx-auto mb-2 bg-green-200" />
+                <Skeleton className="h-4 w-16 mx-auto bg-green-200" />
+              </div>
+              <div className="bg-red-100 p-4 sm:p-6 rounded-lg relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+                <Skeleton className="h-8 w-12 mx-auto mb-2 bg-red-200" />
+                <Skeleton className="h-4 w-16 mx-auto bg-red-200" />
+              </div>
+              <div className="bg-blue-100 p-4 sm:p-6 rounded-lg relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+                <Skeleton className="h-8 w-12 mx-auto mb-2 bg-blue-200" />
+                <Skeleton className="h-4 w-16 mx-auto bg-blue-200" />
+              </div>
+            </div>
+
+            {/* Search filters skeleton with better animations */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
+              <div className="grid gap-2">
+                <Skeleton className="h-4 w-32 animate-pulse" />
+                <Skeleton className="h-10 w-full animate-pulse" />
+              </div>
+              <div className="grid gap-2">
+                <Skeleton className="h-4 w-32 animate-pulse" />
+                <Skeleton className="h-10 w-full animate-pulse" />
+              </div>
+              <div className="grid gap-2">
+                <Skeleton className="h-4 w-40 animate-pulse" />
+                <Skeleton className="h-10 w-full animate-pulse" />
+              </div>
             </div>
-            <Skeleton className="h-10 w-full md:w-auto" />
+
+            {/* Search button skeleton */}
+            <Skeleton className="h-10 w-full md:w-auto animate-pulse" />
+
+            {/* Import/Export buttons skeleton */}
             <div className="flex flex-col sm:flex-row gap-4 mt-4 justify-center">
-              <Skeleton className="h-10 w-full sm:w-1/2" />
-              <Skeleton className="h-10 w-full sm:w-1/2" />
+              <Skeleton className="h-10 w-full sm:w-1/2 animate-pulse" />
+              <Skeleton className="h-10 w-full sm:w-1/2 animate-pulse" />
             </div>
+
+            {/* Table skeleton with staggered animation */}
             <div className="mt-4 overflow-x-auto">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full mt-2" />
-              <Skeleton className="h-12 w-full mt-2" />
-              <Skeleton className="h-12 w-full mt-2" />
+              {/* Table header */}
+              <div className="grid grid-cols-10 gap-4 p-4 border-b bg-muted/50">
+                <Skeleton className="h-4 w-16 animate-pulse" />
+                <Skeleton className="h-4 w-16 animate-pulse" />
+                <Skeleton className="h-4 w-16 animate-pulse" />
+                <Skeleton className="h-4 w-16 animate-pulse" />
+                <Skeleton className="h-4 w-20 animate-pulse" />
+                <Skeleton className="h-4 w-20 animate-pulse" />
+                <Skeleton className="h-4 w-20 animate-pulse" />
+                <Skeleton className="h-4 w-16 animate-pulse" />
+                <Skeleton className="h-4 w-20 animate-pulse" />
+                <Skeleton className="h-4 w-20 animate-pulse" />
+              </div>
+              
+              {/* Table rows with staggered animation */}
+              {[0, 1, 2, 3, 4].map((index) => (
+                <div key={index} className="grid grid-cols-10 gap-4 p-4 border-b">
+                  <Skeleton className="h-4 w-20 animate-pulse" style={{ animationDelay: `${index * 0.1}s` }} />
+                  <Skeleton className="h-4 w-16 animate-pulse" style={{ animationDelay: `${index * 0.1}s` }} />
+                  <Skeleton className="h-4 w-16 animate-pulse" style={{ animationDelay: `${index * 0.1}s` }} />
+                  <Skeleton className="h-4 w-16 animate-pulse" style={{ animationDelay: `${index * 0.1}s` }} />
+                  <Skeleton className="h-4 w-20 animate-pulse" style={{ animationDelay: `${index * 0.1}s` }} />
+                  <Skeleton className="h-4 w-20 animate-pulse" style={{ animationDelay: `${index * 0.1}s` }} />
+                  <Skeleton className="h-4 w-20 animate-pulse" style={{ animationDelay: `${index * 0.1}s` }} />
+                  <Skeleton className="h-4 w-16 animate-pulse" style={{ animationDelay: `${index * 0.1}s` }} />
+                  <Skeleton className="h-4 w-20 animate-pulse" style={{ animationDelay: `${index * 0.1}s` }} />
+                  <Skeleton className="h-4 w-20 animate-pulse" style={{ animationDelay: `${index * 0.1}s` }} />
+                </div>
+              ))}
+            </div>
+
+            {/* Loading indicator */}
+            <div className="flex items-center justify-center py-4">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                <span className="text-sm">
+                  {isAdmin ? 'Loading all database entries...' : 'Loading your data entries...'}
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>

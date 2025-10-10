@@ -4,15 +4,63 @@ import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, User } from "lucide-react";
 
 
 const StockData = () => {
   const { database, isLoadingData } = useData();
+  const { user } = useAuth();
+  const [username, setUsername] = useState<string>("");
+  const [isLoadingUsername, setIsLoadingUsername] = useState(false);
   
+  // Set initial username from email as fallback
+  useEffect(() => {
+    if (user?.email && !username) {
+      setUsername(user.email.split('@')[0] || 'User');
+    }
+  }, [user?.email, username]);
+  
+  // Fetch username from profiles table
+  useEffect(() => {
+    const fetchUsername = async () => {
+      if (user?.id) {
+        console.log('StockData: Fetching username for user:', user.id);
+        setIsLoadingUsername(true);
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', user.id)
+            .single();
+          
+          console.log('StockData: Username fetch result:', { data, error });
+          
+          if (error) {
+            console.error('Error fetching username:', error);
+            // Keep the fallback username from email
+          } else if (data?.username) {
+            console.log('StockData: Setting username to:', data.username);
+            setUsername(data.username);
+          }
+        } catch (error) {
+          console.error('Error fetching username:', error);
+        } finally {
+          setIsLoadingUsername(false);
+        }
+      } else {
+        console.log('StockData: No user ID available for username fetch');
+      }
+    };
+    
+    // Add a small delay to ensure user object is fully loaded
+    const timeoutId = setTimeout(fetchUsername, 100);
+    return () => clearTimeout(timeoutId);
+  }, [user?.id]);
   
   // Initialize state from localStorage or defaults
   const [selectedModel, setSelectedModel] = useState<string>(() => {
@@ -290,17 +338,75 @@ const StockData = () => {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card className="col-span-full">
-          <CardHeader>
-            <CardTitle className="uppercase text-center">Stock Data</CardTitle>
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="uppercase text-center text-lg sm:text-xl flex items-center justify-center gap-2">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+              Loading Stock Data...
+            </CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-6">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-10 w-full" />
+          <CardContent className="grid gap-4 sm:gap-6 p-4 sm:p-6">
+            {/* Summary cards skeleton with shimmer effect */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-center">
+              <div className="bg-green-100 p-4 sm:p-6 rounded-lg relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+                <Skeleton className="h-8 w-12 mx-auto mb-2 bg-green-200" />
+                <Skeleton className="h-4 w-16 mx-auto bg-green-200" />
+              </div>
+              <div className="bg-red-100 p-4 sm:p-6 rounded-lg relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+                <Skeleton className="h-8 w-12 mx-auto mb-2 bg-red-200" />
+                <Skeleton className="h-4 w-16 mx-auto bg-red-200" />
+              </div>
+              <div className="bg-blue-100 p-4 sm:p-6 rounded-lg relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+                <Skeleton className="h-8 w-12 mx-auto mb-2 bg-blue-200" />
+                <Skeleton className="h-4 w-16 mx-auto bg-blue-200" />
+              </div>
+            </div>
+
+            {/* Filter section skeleton with better animations */}
+            <div className="grid gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <Skeleton className="h-6 w-24 animate-pulse" />
+                <Skeleton className="h-8 w-32 animate-pulse" />
+              </div>
+              
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-2">
+                  <Skeleton className="h-4 w-20 animate-pulse" />
+                  <Skeleton className="h-10 w-full animate-pulse" />
+                </div>
+                <div className="grid gap-2">
+                  <Skeleton className="h-4 w-20 animate-pulse" />
+                  <Skeleton className="h-10 w-full animate-pulse" />
+                </div>
+                <div className="grid gap-2">
+                  <Skeleton className="h-4 w-32 animate-pulse" />
+                  <Skeleton className="h-10 w-full animate-pulse" />
+                </div>
+              </div>
+            </div>
+
+            {/* Inventory details skeleton with staggered animation */}
             <div className="mt-4">
-              <Skeleton className="h-6 w-48 mb-2" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full mt-2" />
-              <Skeleton className="h-12 w-full mt-2" />
+              <div className="flex items-center justify-between mb-2">
+                <Skeleton className="h-6 w-32 animate-pulse" />
+                <Skeleton className="h-4 w-20 animate-pulse" />
+              </div>
+              <div className="grid gap-2">
+                <Skeleton className="h-12 w-full animate-pulse" style={{ animationDelay: '0.1s' }} />
+                <Skeleton className="h-12 w-full animate-pulse" style={{ animationDelay: '0.2s' }} />
+                <Skeleton className="h-12 w-full animate-pulse" style={{ animationDelay: '0.3s' }} />
+                <Skeleton className="h-12 w-full animate-pulse" style={{ animationDelay: '0.4s' }} />
+              </div>
+            </div>
+
+            {/* Loading indicator */}
+            <div className="flex items-center justify-center py-4">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                <span className="text-sm">Fetching inventory data...</span>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -310,6 +416,37 @@ const StockData = () => {
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {/* Welcome Section */}
+      <Card className="col-span-full bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-full">
+              <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-blue-900 dark:text-blue-100">
+                Welcome to Inventory Data
+              </h2>
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                Manage your Stock with ease.
+              </p>
+            </div>
+          </div>
+          <div className="text-lg font-medium text-blue-800 dark:text-blue-200">
+            {isLoadingUsername ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <span>Loading profile...</span>
+              </div>
+            ) : username ? (
+              <>Hello, <span className="text-blue-600 dark:text-blue-400 font-semibold">{username}</span>! 👋</>
+            ) : (
+              <>Hello, <span className="text-blue-600 dark:text-blue-400 font-semibold">User</span>! 👋</>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="col-span-full">
         <CardHeader className="p-4 sm:p-6">
           <CardTitle className="uppercase text-center text-lg sm:text-xl">Stock Data</CardTitle>

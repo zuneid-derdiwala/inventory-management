@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useData } from "@/context/DataContext";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Settings } from "lucide-react";
 
 const Index = () => {
   const { isLoadingData } = useData();
@@ -46,6 +47,12 @@ const Index = () => {
           </Link>
           <Link to="/database">
             <Button variant="outline" className="w-full">Browse All Data</Button>
+          </Link>
+          <Link to="/profile-settings">
+            <Button variant="secondary" className="w-full flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              Profile Settings
+            </Button>
           </Link>
           {/* <Link to="/manage-data">
             <Button variant="secondary" className="w-full">Manage Data</Button>
