@@ -8,12 +8,14 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Settings, User } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect } from "react";
 
 const Index = () => {
   const { isLoadingData } = useData();
   const { user } = useAuth();
   const [username, setUsername] = useState<string>("");
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [isLoadingUsername, setIsLoadingUsername] = useState(false);
   
   // Set initial username from email as fallback
@@ -32,18 +34,31 @@ const Index = () => {
         try {
           const { data, error } = await supabase
             .from('profiles')
-            .select('username')
+            .select('username, avatar_url')
             .eq('id', user.id)
             .single();
           
-          console.log('Index: Username fetch result:', { data, error });
+          console.log('Index: Profile fetch result:', { data, error });
           
           if (error) {
-            console.error('Error fetching username:', error);
-            // Keep the fallback username from email
-          } else if (data?.username) {
-            console.log('Index: Setting username to:', data.username);
-            setUsername(data.username);
+            console.log('Index: Profile fetch error (might be missing columns):', error);
+            
+            // If avatar_url column doesn't exist, try just username
+            const { data: usernameData, error: usernameError } = await supabase
+              .from('profiles')
+              .select('username')
+              .eq('id', user.id)
+              .single();
+
+            if (usernameError) {
+              console.error('Error fetching username:', usernameError);
+            } else {
+              setUsername(usernameData?.username || '');
+              setAvatarUrl(''); // No avatar_url column available
+            }
+          } else {
+            setUsername(data?.username || '');
+            setAvatarUrl(data?.avatar_url || '');
           }
         } catch (error) {
           console.error('Error fetching username:', error);
@@ -59,6 +74,16 @@ const Index = () => {
     const timeoutId = setTimeout(fetchUsername, 100);
     return () => clearTimeout(timeoutId);
   }, [user?.id]);
+
+  const getUserInitials = () => {
+    if (username) {
+      return username.substring(0, 2).toUpperCase();
+    }
+    if (user?.email) {
+      return user.email.substring(0, 2).toUpperCase();
+    }
+    return "U";
+  };
 
   if (isLoadingData) {
     return (
@@ -85,7 +110,7 @@ const Index = () => {
         {/* Personalized Welcome Section */}
         <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800">
           <CardContent className="p-6">
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-full">
                 <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
@@ -98,17 +123,30 @@ const Index = () => {
                 </p>
               </div>
             </div>
-            <div className="text-lg font-medium text-blue-800 dark:text-blue-200">
-              {isLoadingUsername ? (
-                <div className="flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                  <span>Loading profile...</span>
-                </div>
-              ) : username ? (
-                <>Hello, <span className="text-blue-600 dark:text-blue-400 font-semibold">{username}</span>! 👋</>
-              ) : (
-                <>Hello, <span className="text-blue-600 dark:text-blue-400 font-semibold">User</span>! 👋</>
-              )}
+            
+            {/* Profile Photo and Greeting */}
+            <div className="flex items-center gap-4">
+              <Avatar className="h-16 w-16 border-2 border-blue-200 dark:border-blue-700">
+                {avatarUrl ? (
+                  <AvatarImage src={avatarUrl} alt="Profile" className="object-cover" />
+                ) : (
+                  <AvatarFallback className="text-lg font-semibold bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400">
+                    {getUserInitials()}
+                  </AvatarFallback>
+                )}
+              </Avatar>
+              <div className="text-lg font-medium text-blue-800 dark:text-blue-200">
+                {isLoadingUsername ? (
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span>Loading profile...</span>
+                  </div>
+                ) : username ? (
+                  <>Hello, <span className="text-blue-600 dark:text-blue-400 font-semibold">{username}</span>! 👋</>
+                ) : (
+                  <>Hello, <span className="text-blue-600 dark:text-blue-400 font-semibold">User</span>! 👋</>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
