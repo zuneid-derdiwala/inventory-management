@@ -15,14 +15,6 @@ const excelDateToJSDate = (excelDate: number): Date | undefined => {
   return isNaN(date.getTime()) ? undefined : date;
 };
 
-// Helper to convert JS Date object to Excel date number
-const jsDateToExcelDate = (jsDate: Date | undefined): number | undefined => {
-  if (!jsDate) return undefined;
-  const excelEpoch = new Date(1899, 11, 30); // Dec 30, 1899 for Excel's 1900-01-01 base
-  const diffTime = Math.abs(jsDate.getTime() - excelEpoch.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
-};
 
 export const readExcelFile = (file: File): Promise<EntryData[]> => {
   return new Promise((resolve, reject) => {
@@ -46,10 +38,6 @@ export const readExcelFile = (file: File): Promise<EntryData[]> => {
         const headers = json[0].map((h: string) => h ? h.trim() : '').filter(Boolean);
         const rows = json.slice(1);
 
-        const expectedHeaders = [
-          "IMEI", "Brand", "Model", "Seller", "Booking Person",
-          "Inward Date", "Inward Amount", "Buyer", "Outward Date", "Outward Amount"
-        ];
 
         // Map headers to their column index
         const headerMap: { [key: string]: number } = {};
@@ -134,37 +122,44 @@ export const exportToExcel = (data: EntryData[], filename: string = "inventory_d
     return;
   }
 
+  // Format dates as strings in dd/mm/yyyy format for better Excel compatibility
+  const formatDate = (date: Date | undefined): string => {
+    if (!date) return "";
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
   const exportData = data.map(entry => ({
     "IMEI": entry.imei,
     "Brand": entry.brand,
     "Model": entry.model,
     "Seller": entry.seller,
     "Booking Person": entry.bookingPerson,
-    "Inward Date": entry.inwardDate ? jsDateToExcelDate(entry.inwardDate) : undefined,
+    "Inward Date": formatDate(entry.inwardDate),
     "Inward Amount": entry.inwardAmount,
     "Buyer": entry.buyer,
-    "Outward Date": entry.outwardDate ? jsDateToExcelDate(entry.outwardDate) : undefined,
+    "Outward Date": formatDate(entry.outwardDate),
     "Outward Amount": entry.outwardAmount,
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(exportData);
 
-  // Format dates as numbers in Excel
-  const dateCols = ["Inward Date", "Outward Date"];
-  for (const z in worksheet) {
-    if (z[0] === '!') continue; // Skip metadata
-    const col = XLSX.utils.decode_col(z);
-    const header = XLSX.utils.encode_col(col);
-    const headerCell = worksheet[header + '1']; // Assuming header is in row 1
-
-    if (headerCell && dateCols.includes(headerCell.v)) {
-      const cell = worksheet[z];
-      if (cell && typeof cell.v === 'number') {
-        cell.t = 'n'; // Set type to number
-        cell.z = 'dd/mm/yyyy'; // Set number format for dates
-      }
-    }
-  }
+  // Set column widths for better readability
+  const colWidths = [
+    { wch: 15 }, // IMEI
+    { wch: 10 }, // Brand
+    { wch: 15 }, // Model
+    { wch: 12 }, // Seller
+    { wch: 15 }, // Booking Person
+    { wch: 12 }, // Inward Date
+    { wch: 12 }, // Inward Amount
+    { wch: 12 }, // Buyer
+    { wch: 12 }, // Outward Date
+    { wch: 12 }, // Outward Amount
+  ];
+  worksheet['!cols'] = colWidths;
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory Data");
