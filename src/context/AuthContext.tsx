@@ -44,7 +44,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const role = data?.role || 'user';
       setUserRole(role);
       setIsAdmin(role === 'admin');
-      console.log('User role:', role, 'isAdmin:', role === 'admin');
     } catch (error) {
       console.error('Error fetching user role:', error);
       setUserRole(null);
@@ -128,6 +127,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       showSuccess("Account created successfully! Please check your email to verify your account.");
       return { success: true };
     } catch (error) {
+      console.error("Error during sign up:", error);
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       return { success: false, error: errorMessage };
     } finally {
@@ -138,14 +138,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signIn = async (usernameOrEmail: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       setLoading(true);
-      console.log("AuthContext: Attempting sign in for:", usernameOrEmail);
       
       // Check if input is an email (contains @) or username
       let email = usernameOrEmail;
       
       if (!usernameOrEmail.includes('@')) {
         // It's a username, look up the email
-        console.log("AuthContext: Looking up email for username:", usernameOrEmail);
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('email')
@@ -153,33 +151,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           .single();
 
         if (profileError || !profileData?.email) {
-          console.log("AuthContext: Username not found:", profileError);
           return { success: false, error: "Username not found" };
         }
         
         email = profileData.email;
-        console.log("AuthContext: Found email for username:", email);
       }
       
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      console.log("AuthContext: Sign in result:", { data, error });
 
       if (error) {
-        console.log("AuthContext: Sign in error:", error);
         return { success: false, error: error.message };
       }
 
-      console.log("AuthContext: Sign in successful, data:", data);
       showSuccess("Welcome back!");
       const result = { success: true };
-      console.log("AuthContext: Returning result:", result);
       return result;
     } catch (error) {
-      console.log("AuthContext: Sign in exception:", error);
+      console.error("Error during sign in:", error);
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       return { success: false, error: errorMessage };
     } finally {
@@ -217,6 +209,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       showSuccess("Password reset email sent! Check your inbox.");
       return { success: true };
     } catch (error) {
+      console.error("Error during password reset:", error);
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       return { success: false, error: errorMessage };
     }

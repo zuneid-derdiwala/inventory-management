@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +63,11 @@ const ManageDataPage = () => {
   const [isModelsOpen, setIsModelsOpen] = useState(true);
   const [isSellersOpen, setIsSellersOpen] = useState(true);
   const [isBookingPersonsOpen, setIsBookingPersonsOpen] = useState(true);
+
+  // Track page navigation
+  useEffect(() => {
+    localStorage.setItem('lastVisitedPage', 'manage-data');
+  }, []);
 
   const handleAddBrand = async () => {
     if (await addBrand(newBrandName)) {

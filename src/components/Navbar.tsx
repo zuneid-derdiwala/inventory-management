@@ -40,7 +40,6 @@ const Navbar = () => {
             .single();
 
           if (error) {
-            console.log('Navbar: Profile fetch error (might be missing columns):', error);
             
             // If avatar_url column doesn't exist, try just username
             const { data: usernameData, error: usernameError } = await supabase

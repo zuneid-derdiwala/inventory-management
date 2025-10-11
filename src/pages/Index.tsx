@@ -14,6 +14,11 @@ import { useState, useEffect } from "react";
 const Index = () => {
   const { isLoadingData } = useData();
   const { user } = useAuth();
+
+  // Track page navigation
+  useEffect(() => {
+    localStorage.setItem('lastVisitedPage', 'home');
+  }, []);
   const [username, setUsername] = useState<string>("");
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [isLoadingUsername, setIsLoadingUsername] = useState(false);
@@ -29,7 +34,6 @@ const Index = () => {
   useEffect(() => {
     const fetchUsername = async () => {
       if (user?.id) {
-        console.log('Index: Fetching username for user:', user.id);
         setIsLoadingUsername(true);
         try {
           const { data, error } = await supabase
@@ -38,10 +42,8 @@ const Index = () => {
             .eq('id', user.id)
             .single();
           
-          console.log('Index: Profile fetch result:', { data, error });
           
           if (error) {
-            console.log('Index: Profile fetch error (might be missing columns):', error);
             
             // If avatar_url column doesn't exist, try just username
             const { data: usernameData, error: usernameError } = await supabase
@@ -66,7 +68,6 @@ const Index = () => {
           setIsLoadingUsername(false);
         }
       } else {
-        console.log('Index: No user ID available for username fetch');
       }
     };
     

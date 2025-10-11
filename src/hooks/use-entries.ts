@@ -57,7 +57,6 @@ export function useEntries({
         showError("Failed to load inventory data.");
         setDatabase([]);
       } else {
-        console.log("Raw entries data from Supabase:", response.data);
         const fetchedData: EntryData[] = (response.data || []).map((item: any) => ({
           imei: item.imei,
           brand: item.brand,
@@ -70,7 +69,6 @@ export function useEntries({
           outwardDate: parseSupabaseDate(item.outward_date),
           outwardAmount: item.outward_amount,
         }));
-        console.log("Processed entries data:", fetchedData);
         setDatabase(fetchedData);
       }
     } else {
@@ -144,11 +142,8 @@ export function useEntries({
         return false;
       }
 
-      setDatabase((prev) => [...prev, {
-        ...entry,
-        inwardDate: parseSupabaseDate(response.data?.[0]?.inward_date),
-        outwardDate: parseSupabaseDate(response.data?.[0]?.outward_date),
-      }]);
+      // Instead of just adding to local state, refresh all data from database
+      await fetchEntries();
     } else {
       // Fallback to local storage
       const newEntry = { ...entry };
@@ -239,7 +234,7 @@ export function useEntries({
 
       // 3. Proceed with entries bulk insert
       if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
-        const { data, error: entriesInsertError } = await supabase.from("entries").insert(
+        const { error: entriesInsertError } = await supabase.from("entries").insert(
           validNewEntriesToInsert.map(entry => ({
             imei: entry.imei,
             brand: entry.brand || null, // Explicitly null
@@ -260,23 +255,8 @@ export function useEntries({
           return false;
         }
 
-        const importedData: EntryData[] = (data || []).map((item: any) => ({
-          imei: item.imei,
-          brand: item.brand,
-          model: item.model,
-          seller: item.seller,
-          bookingPerson: item.booking_person,
-          inwardDate: parseSupabaseDate(item.inward_date),
-          inwardAmount: item.inward_amount,
-          buyer: item.buyer,
-          outwardDate: parseSupabaseDate(item.outward_date),
-          outwardAmount: item.outward_amount,
-        }));
-
-        setDatabase(prev => {
-          const updatedDatabase = [...prev, ...importedData];
-          return updatedDatabase;
-        });
+        // Instead of just adding to local state, refresh all data from database
+        await fetchEntries();
       } else {
         // Fallback to local storage
         const updatedDatabase = [...database, ...validNewEntriesToInsert];
@@ -368,13 +348,8 @@ export function useEntries({
         return false;
       }
 
-      setDatabase((prev) =>
-        prev.map((e) => (e.imei === entry.imei ? {
-          ...entry,
-          inwardDate: entry.inwardDate,
-          outwardDate: entry.outwardDate,
-        } : e))
-      );
+      // Instead of just updating local state, refresh all data from database
+      await fetchEntries();
     } else {
       // Fallback to local storage
       const updatedDatabase = database.map((e) => 
@@ -412,7 +387,8 @@ export function useEntries({
         return false;
       }
 
-      setDatabase((prev) => prev.filter((entry) => entry.imei !== imei));
+      // Instead of just updating local state, refresh all data from database
+      await fetchEntries();
     } else {
       // Fallback to local storage
       const updatedDatabase = database.filter((entry) => entry.imei !== imei);

@@ -45,6 +45,11 @@ const Database = () => {
   const [open2, setOpen2] = useState(false);
   const [open3, setOpen3] = useState(false);
 
+  // Track page navigation
+  useEffect(() => {
+    localStorage.setItem('lastVisitedPage', 'database');
+  }, []);
+
   // Fetch all data for admin users
   useEffect(() => {
     const fetchAllData = async () => {
@@ -167,9 +172,28 @@ const Database = () => {
   };
 
   const handleDelete = async (imei: string) => {
-    await deleteEntry(imei);
-    // After deletion, re-apply the current active search to update the list
-    handleSearch();
+    const success = await deleteEntry(imei);
+    if (success) {
+      // For admin users, refresh all data
+      if (isAdmin) {
+        setIsLoadingAllData(true);
+        try {
+          const { data, error } = await supabase.from("entries").select("*");
+          if (error) {
+            console.error("Error fetching all data after delete:", error);
+          } else {
+            setAllData(data || []);
+          }
+        } catch (error) {
+          console.error("Error fetching all data after delete:", error);
+        } finally {
+          setIsLoadingAllData(false);
+        }
+      } else {
+        // For regular users, the deleteEntry function already calls fetchEntries()
+        // No additional action needed
+      }
+    }
   };
 
   // --- Suggestion Generation ---

@@ -36,7 +36,6 @@ const ProfileSettings = () => {
             .single();
 
           if (error) {
-            console.log('Profile fetch error (might be missing avatar_url column):', error);
             
             // If avatar_url column doesn't exist, try just username
             const { data: usernameData, error: usernameError } = await supabase
@@ -112,7 +111,6 @@ const ProfileSettings = () => {
         
         // If avatar_url column doesn't exist, try without it
         if (error.message.includes('avatar_url')) {
-          console.log('avatar_url column not found, updating without it');
           const { error: usernameError } = await supabase
             .from('profiles')
             .upsert({

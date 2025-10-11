@@ -24,6 +24,7 @@ const StockData = () => {
     return localStorage.getItem('stockData_selectedBookingPerson') || "all";
   });
   
+  
   // State for tracking expanded items
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   
@@ -39,6 +40,25 @@ const StockData = () => {
       return newSet;
     });
   };
+
+  // Check if user has navigated away and clear filters if they have
+  useEffect(() => {
+    const lastVisitedPage = localStorage.getItem('lastVisitedPage');
+    const currentPage = 'stock-data';
+    
+    if (lastVisitedPage && lastVisitedPage !== currentPage) {
+      // User has navigated away and returned, clear filters
+      setSelectedModel("all");
+      setSelectedBrand("all");
+      setSelectedBookingPerson("all");
+      localStorage.removeItem('stockData_selectedModel');
+      localStorage.removeItem('stockData_selectedBrand');
+      localStorage.removeItem('stockData_selectedBookingPerson');
+    }
+    
+    // Update the last visited page
+    localStorage.setItem('lastVisitedPage', currentPage);
+  }, []);
 
   // Save filter state to localStorage whenever it changes
   useEffect(() => {
@@ -61,69 +81,34 @@ const StockData = () => {
 
   // First filter the database entries based on the selected filters
   const filteredEntries = useMemo(() => {
-    console.log("StockData: Total database entries:", dataSource.length);
-    console.log("StockData: Database entries:", dataSource);
-    console.log("StockData: Selected filters:", { selectedModel, selectedBrand, selectedBookingPerson });
     
     return dataSource.filter(entry => {
       // Only require basic entry data (IMEI and model)
       if (!entry.imei || !entry.model) {
-        console.log("StockData: Filtering out entry (missing basic data):", entry.imei, {
-          hasImei: !!entry.imei,
-          hasModel: !!entry.model
-        });
         return false;
       }
 
       // Check model filter
       if (selectedModel !== "all" && entry.model !== selectedModel) {
-        console.log("StockData: Filtering out entry by model:", {
-          entryImei: entry.imei,
-          entryModel: entry.model,
-          selectedModel: selectedModel,
-          match: entry.model === selectedModel
-        });
         return false;
       }
 
       // Check brand filter
       if (selectedBrand !== "all" && entry.brand !== selectedBrand) {
-        console.log("StockData: Filtering out entry by brand:", {
-          entryImei: entry.imei,
-          entryBrand: entry.brand,
-          selectedBrand: selectedBrand,
-          match: entry.brand === selectedBrand
-        });
         return false;
       }
 
       // Check booking person filter
       if (selectedBookingPerson !== "all" && entry.bookingPerson !== selectedBookingPerson) {
-        console.log("StockData: Filtering out entry by booking person:", {
-          entryImei: entry.imei,
-          entryBookingPerson: entry.bookingPerson,
-          selectedBookingPerson: selectedBookingPerson,
-          match: entry.bookingPerson === selectedBookingPerson
-        });
         return false;
       }
 
-      console.log("StockData: Entry passed all filters:", {
-        imei: entry.imei,
-        model: entry.model,
-        brand: entry.brand,
-        bookingPerson: entry.bookingPerson,
-        inwardDate: entry.inwardDate,
-        outwardDate: entry.outwardDate
-      });
       return true;
     });
   }, [dataSource, selectedModel, selectedBrand, selectedBookingPerson]);
 
   // Debug the filtered entries
   useEffect(() => {
-    console.log("StockData: Filtered entries count:", filteredEntries.length);
-    console.log("StockData: Filtered entries:", filteredEntries);
   }, [filteredEntries]);
 
   // Calculate stock from filtered entries - show ALL data including sold items
@@ -209,9 +194,6 @@ const StockData = () => {
       }
     });
     const result = Array.from(models).sort();
-    console.log("StockData: Available models for brand", selectedBrand, ":", result);
-    console.log("StockData: Total entries:", dataSource.length);
-    console.log("StockData: Entries with brand", selectedBrand, ":", dataSource.filter(entry => selectedBrand === "all" || entry.brand === selectedBrand).length);
     return result;
   }, [dataSource, selectedBrand]);
 
@@ -224,9 +206,6 @@ const StockData = () => {
       }
     });
     const result = Array.from(brands).sort();
-    console.log("StockData: Available brands for model", selectedModel, ":", result);
-    console.log("StockData: Total entries:", dataSource.length);
-    console.log("StockData: Entries with model", selectedModel, ":", dataSource.filter(entry => selectedModel === "all" || entry.model === selectedModel).length);
     return result;
   }, [dataSource, selectedModel]);
 
@@ -236,11 +215,6 @@ const StockData = () => {
       if (entry.bookingPerson) bookingPersons.add(entry.bookingPerson);
     });
     const result = Array.from(bookingPersons).sort();
-    console.log("StockData: Available booking persons:", result);
-    console.log("StockData: All booking persons in data:", dataSource.map(entry => ({
-      imei: entry.imei,
-      bookingPerson: entry.bookingPerson
-    })));
     return result;
   }, [dataSource]);
 
@@ -249,13 +223,11 @@ const StockData = () => {
     if (availableModels.length > 0 && availableBrands.length > 0) {
       // Check if stored model is still valid
       if (selectedModel !== "all" && !availableModels.includes(selectedModel)) {
-        console.log("StockData: Stored model", selectedModel, "no longer available, keeping selection");
         // Don't clear, just keep the selection - it will show "no items found" which is correct
       }
       
       // Check if stored brand is still valid
       if (selectedBrand !== "all" && !availableBrands.includes(selectedBrand)) {
-        console.log("StockData: Stored brand", selectedBrand, "no longer available, keeping selection");
         // Don't clear, just keep the selection - it will show "no items found" which is correct
       }
     }
@@ -267,7 +239,6 @@ const StockData = () => {
       // Check if the currently selected model is available for the selected brand
       const isModelAvailable = availableModels.includes(selectedModel);
       if (!isModelAvailable && selectedModel !== "all") {
-        console.log("StockData: Model", selectedModel, "not available for brand", selectedBrand, ", clearing model selection");
         setSelectedModel("all");
         localStorage.setItem('stockData_selectedModel', 'all');
       }
@@ -280,7 +251,6 @@ const StockData = () => {
       // Check if the currently selected brand is available for the selected model
       const isBrandAvailable = availableBrands.includes(selectedBrand);
       if (!isBrandAvailable && selectedBrand !== "all") {
-        console.log("StockData: Brand", selectedBrand, "not available for model", selectedModel, ", clearing brand selection");
         setSelectedBrand("all");
         localStorage.setItem('stockData_selectedBrand', 'all');
       }
