@@ -61,10 +61,151 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
-  const { availableBrands, setAvailableBrands, addBrand, updateBrand, deleteBrand, isLoading: isLoadingBrands, fetchBrands } = useBrands();
-  const { availableModels, setAvailableModels, addModel, updateModel, deleteModel, getModelsByBrand, isLoading: isLoadingModels, fetchModels } = useModels();
-  const { availableSellers, setAvailableSellers, addSeller, updateSeller, deleteSeller, isLoading: isLoadingSellers, fetchSellers } = useSellers();
-  const { availableBookingPersons, setAvailableBookingPersons, addBookingPerson, updateBookingPerson, deleteBookingPerson, isLoading: isLoadingBookingPersons, fetchBookingPersons } = useBookingPersons();
+  const { availableBrands: brandsData, setAvailableBrands, addBrand: addBrandRaw, updateBrand: updateBrandRaw, deleteBrand: deleteBrandRaw, isLoading: isLoadingBrands, fetchBrands, getBrandNames, getBrandByName } = useBrands();
+  const { availableModels: modelsData, setAvailableModels, addModel: addModelRaw, updateModel: updateModelRaw, deleteModel: deleteModelRaw, getModelsByBrand: getModelsByBrandRaw, isLoading: isLoadingModels, fetchModels } = useModels();
+  const { availableSellers: sellersData, setAvailableSellers, addSeller: addSellerRaw, updateSeller: updateSellerRaw, deleteSeller: deleteSellerRaw, isLoading: isLoadingSellers, fetchSellers, getSellerNames, getSellerByName } = useSellers();
+  const { availableBookingPersons: bookingPersonsData, setAvailableBookingPersons, addBookingPerson: addBookingPersonRaw, updateBookingPerson: updateBookingPersonRaw, deleteBookingPerson: deleteBookingPersonRaw, isLoading: isLoadingBookingPersons, fetchBookingPersons, getBookingPersonNames, getBookingPersonByName } = useBookingPersons();
+
+  // Convert to string arrays for backward compatibility (useMemo to recompute when data changes)
+  // Remove duplicates to prevent React key warnings
+  const availableBrands = React.useMemo(() => {
+    const brands = getBrandNames ? getBrandNames() : brandsData.map(b => b.name);
+    return Array.from(new Set(brands)); // Remove duplicates
+  }, [brandsData, getBrandNames]);
+
+  const availableSellers = React.useMemo(() => {
+    const sellers = getSellerNames ? getSellerNames() : sellersData.map(s => s.name);
+    return Array.from(new Set(sellers)); // Remove duplicates
+  }, [sellersData, getSellerNames]);
+
+  const availableBookingPersons = React.useMemo(() => {
+    const persons = getBookingPersonNames ? getBookingPersonNames() : bookingPersonsData.map(bp => bp.name);
+    return Array.from(new Set(persons)); // Remove duplicates
+  }, [bookingPersonsData, getBookingPersonNames]);
+  
+  // Convert models to Record<string, string[]> format
+  const availableModels: Record<string, string[]> = React.useMemo(() => {
+    const result: Record<string, string[]> = {};
+    if (getModelsByBrandRaw) {
+      // Use the helper function if available
+      brandsData.forEach(brand => {
+        result[brand.name] = getModelsByBrandRaw(brand.name);
+      });
+    } else {
+      // Fallback: group models by brand_name
+      modelsData.forEach(model => {
+        if (model.brand_name) {
+          if (!result[model.brand_name]) {
+            result[model.brand_name] = [];
+          }
+          result[model.brand_name].push(model.name);
+        }
+      });
+    }
+    return result;
+  }, [brandsData, modelsData, getModelsByBrandRaw]);
+
+  const getModelsByBrand = React.useCallback((brandName: string): string[] => {
+    return availableModels[brandName] || [];
+  }, [availableModels]);
+
+  // Wrapper functions to convert string inputs to ID-based operations
+  const addBrand = async (brand: string): Promise<boolean> => {
+    const result = await addBrandRaw(brand);
+    return result !== null;
+  };
+
+  const updateBrand = async (oldBrand: string, newBrand: string): Promise<boolean> => {
+    const brandObj = getBrandByName ? getBrandByName(oldBrand) : brandsData.find(b => b.name === oldBrand);
+    if (!brandObj) return false;
+    return await updateBrandRaw(brandObj.id, newBrand);
+  };
+
+  const deleteBrand = async (brand: string): Promise<boolean> => {
+    const brandObj = getBrandByName ? getBrandByName(brand) : brandsData.find(b => b.name === brand);
+    if (!brandObj) return false;
+    return await deleteBrandRaw(brandObj.id);
+  };
+
+  const addModel = async (brand: string, model: string): Promise<boolean> => {
+    const brandObj = getBrandByName ? getBrandByName(brand) : brandsData.find(b => b.name === brand);
+    if (!brandObj) return false;
+    const result = await addModelRaw(brandObj.id, model);
+    return result !== null;
+  };
+
+  const updateModel = async (brand: string, oldModel: string, newModel: string): Promise<boolean> => {
+    const brandObj = getBrandByName ? getBrandByName(brand) : brandsData.find(b => b.name === brand);
+    if (!brandObj) return false;
+    const modelObj = modelsData.find(m => m.brand_id === brandObj.id && m.name === oldModel);
+    if (!modelObj) return false;
+    return await updateModelRaw(modelObj.id, newModel);
+  };
+
+  const deleteModel = async (brand: string, model: string): Promise<boolean> => {
+    const brandObj = getBrandByName ? getBrandByName(brand) : brandsData.find(b => b.name === brand);
+    if (!brandObj) return false;
+    const modelObj = modelsData.find(m => m.brand_id === brandObj.id && m.name === model);
+    if (!modelObj) return false;
+    return await deleteModelRaw(modelObj.id);
+  };
+
+  const addSeller = async (seller: string): Promise<boolean> => {
+    const result = await addSellerRaw(seller);
+    return result !== null;
+  };
+
+  const updateSeller = async (oldSeller: string, newSeller: string): Promise<boolean> => {
+    const sellerObj = getSellerByName ? getSellerByName(oldSeller) : sellersData.find(s => s.name === oldSeller);
+    if (!sellerObj) return false;
+    return await updateSellerRaw(sellerObj.id, newSeller);
+  };
+
+  const deleteSeller = async (seller: string): Promise<boolean> => {
+    const sellerObj = getSellerByName ? getSellerByName(seller) : sellersData.find(s => s.name === seller);
+    if (!sellerObj) return false;
+    return await deleteSellerRaw(sellerObj.id);
+  };
+
+  const addBookingPerson = async (person: string): Promise<boolean> => {
+    const result = await addBookingPersonRaw(person);
+    return result !== null;
+  };
+
+  const updateBookingPerson = async (oldPerson: string, newPerson: string): Promise<boolean> => {
+    const personObj = getBookingPersonByName ? getBookingPersonByName(oldPerson) : bookingPersonsData.find(bp => bp.name === oldPerson);
+    if (!personObj) return false;
+    return await updateBookingPersonRaw(personObj.id, newPerson);
+  };
+
+  const deleteBookingPerson = async (person: string): Promise<boolean> => {
+    const personObj = getBookingPersonByName ? getBookingPersonByName(person) : bookingPersonsData.find(bp => bp.name === person);
+    if (!personObj) return false;
+    return await deleteBookingPersonRaw(personObj.id);
+  };
+
+  // Helper functions to get IDs from names
+  const getBrandIdByName = (name: string): string | undefined => {
+    const brand = getBrandByName ? getBrandByName(name) : brandsData.find(b => b.name === name);
+    return brand?.id;
+  };
+
+  const getModelIdByName = (brandName: string, modelName: string): string | undefined => {
+    const brand = getBrandByName ? getBrandByName(brandName) : brandsData.find(b => b.name === brandName);
+    if (!brand) return undefined;
+    const model = modelsData.find(m => m.brand_id === brand.id && m.name === modelName);
+    return model?.id;
+  };
+
+  const getSellerIdByName = (name: string): string | undefined => {
+    const seller = getSellerByName ? getSellerByName(name) : sellersData.find(s => s.name === name);
+    return seller?.id;
+  };
+
+  const getBookingPersonIdByName = (name: string): string | undefined => {
+    const person = getBookingPersonByName ? getBookingPersonByName(name) : bookingPersonsData.find(bp => bp.name === name);
+    return person?.id;
+  };
 
   const {
     database,
@@ -81,6 +222,19 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     addModelToSupabase: addModel,
     addSellerToSupabase: addSeller,
     addBookingPersonToSupabase: addBookingPerson,
+    getBrandIdByName,
+    getModelIdByName,
+    getSellerIdByName,
+    getBookingPersonIdByName,
+    refreshDependencies: async () => {
+      // Refresh all dependency data after bulk creation
+      await Promise.all([
+        fetchBrands(),
+        fetchModels(),
+        fetchSellers(),
+        fetchBookingPersons(),
+      ]);
+    },
   });
 
   const [isResetting, setIsResetting] = useState(false); // Initialize new state
@@ -101,7 +255,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     } else {
       // User logged out, clear all data
       setAvailableBrands([]);
-      setAvailableModels({});
+      setAvailableModels([]);
       setAvailableSellers([]);
       setAvailableBookingPersons([]);
     }
@@ -146,7 +300,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       // Reset local states after successful deletion
       resetEntries(); // This clears `database` state in useEntries
       setAvailableBrands([]);
-      setAvailableModels({});
+      setAvailableModels([]);
       setAvailableSellers([]);
       setAvailableBookingPersons([]);
 
@@ -185,19 +339,17 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
           showError(`Brand '${brand}' deleted, but failed to delete associated models.`);
           return false;
         }
+        // Refresh models from database after deletion
+        await fetchModels();
       } else {
         // Fallback to local storage
+        // Update the Model[] array by filtering out models with matching brand_name
+        setAvailableModels(prev => prev.filter(m => m.brand_name !== brand));
+        // Also update local storage if needed
         const currentModels = { ...availableModels };
         delete currentModels[brand];
-        setAvailableModels(currentModels);
         localStorage.setItem("models", JSON.stringify(currentModels));
       }
-      
-      setAvailableModels(prev => {
-        const updatedModels = { ...prev };
-        delete updatedModels[brand];
-        return updatedModels;
-      });
     }
     return success;
   };

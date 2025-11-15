@@ -71,13 +71,68 @@ const Database = () => {
           return;
         }
 
+        // Fetch with joins to get names from related tables
+        // Filter out soft-deleted entries (is_deleted = false)
+        let entriesQuery = supabase
+          .from("entries")
+          .select(`
+            *,
+            brands:brand_id(name),
+            models:model_id(name),
+            sellers:seller_id(name),
+            booking_persons:booking_person_id(name)
+          `)
+          .eq('is_deleted', false)
+          .order("created_at", { ascending: false });
+        
+        const { data: entriesWithJoins, error: joinError } = await entriesQuery;
+
+        if (joinError) {
+          // If error is about is_deleted column not existing, try without filter
+          if (joinError.code === '42703' || joinError.message?.includes('column "is_deleted" does not exist')) {
+            console.log("is_deleted column doesn't exist, fetching all entries...");
+            const { data: entriesWithoutFilter, error: retryError } = await supabase
+              .from("entries")
+              .select(`
+                *,
+                brands:brand_id(name),
+                models:model_id(name),
+                sellers:seller_id(name),
+                booking_persons:booking_person_id(name)
+              `)
+              .order("created_at", { ascending: false });
+            
+            if (retryError) {
+              console.error("Error fetching entries with joins (retry):", retryError);
+            } else {
+              // Use entries without filter if is_deleted column doesn't exist
+              const convertedData: EntryData[] = (entriesWithoutFilter || []).map((entry: any) => ({
+                imei: entry.imei || "",
+                brand: entry.brands?.name || entry.brand || undefined,
+                model: entry.models?.name || entry.model || undefined,
+                seller: entry.sellers?.name || entry.seller || undefined,
+                bookingPerson: entry.booking_persons?.name || entry.booking_person || undefined,
+                inwardDate: entry.inward_date ? new Date(entry.inward_date) : undefined,
+                inwardAmount: entry.inward_amount || undefined,
+                buyer: entry.buyer || undefined,
+                outwardDate: entry.outward_date ? new Date(entry.outward_date) : undefined,
+                outwardAmount: entry.outward_amount || undefined,
+              }));
+              setAllData(convertedData);
+              return;
+            }
+          } else {
+            console.error("Error fetching entries with joins:", joinError);
+          }
+        }
+
         // Convert Supabase data to EntryData format
-        const convertedData: EntryData[] = (data || []).map((entry: any) => ({
+        const convertedData: EntryData[] = (entriesWithJoins || data || []).map((entry: any) => ({
           imei: entry.imei || "",
-          brand: entry.brand || undefined,
-          model: entry.model || undefined,
-          seller: entry.seller || undefined,
-          bookingPerson: entry.booking_person || undefined,
+          brand: entry.brands?.name || entry.brand || undefined,
+          model: entry.models?.name || entry.model || undefined,
+          seller: entry.sellers?.name || entry.seller || undefined,
+          bookingPerson: entry.booking_persons?.name || entry.booking_person || undefined,
           inwardDate: entry.inward_date ? new Date(entry.inward_date) : undefined,
           inwardAmount: entry.inward_amount || undefined,
           buyer: entry.buyer || undefined,
@@ -200,32 +255,52 @@ const Database = () => {
 
   const imeiDateSuggestions = useMemo(() => {
     const suggestions = new Set<string>();
-    database.forEach(entry => {
-      if (entry.imei) suggestions.add(entry.imei);
-      if (entry.inwardDate) suggestions.add(format(entry.inwardDate, "dd/MM/yyyy"));
-      if (entry.outwardDate) suggestions.add(format(entry.outwardDate, "dd/MM/yyyy"));
+    dataSource.forEach(entry => {
+      if (entry.imei) suggestions.add(String(entry.imei));
+      if (entry.inwardDate) {
+        try {
+          const dateStr = format(entry.inwardDate, "dd/MM/yyyy");
+          if (dateStr) suggestions.add(dateStr);
+        } catch (e) {
+          // Invalid date, skip
+        }
+      }
+      if (entry.outwardDate) {
+        try {
+          const dateStr = format(entry.outwardDate, "dd/MM/yyyy");
+          if (dateStr) suggestions.add(dateStr);
+        } catch (e) {
+          // Invalid date, skip
+        }
+      }
     });
     const query = searchQuery1.toLowerCase();
-    return Array.from(suggestions).filter(s => s.toLowerCase().includes(query)).sort();
-  }, [database, searchQuery1]);
+    return Array.from(suggestions).filter(s => typeof s === 'string' && s.toLowerCase().includes(query)).sort();
+  }, [dataSource, searchQuery1]);
 
   const brandModelSuggestions = useMemo(() => {
     const suggestions = new Set<string>();
-    availableBrands.forEach(brand => suggestions.add(brand));
-    Object.values(availableModels).flat().forEach(model => suggestions.add(model));
+    availableBrands.forEach(brand => {
+      if (brand) suggestions.add(String(brand));
+    });
+    Object.values(availableModels).flat().forEach(model => {
+      if (model) suggestions.add(String(model));
+    });
     const query = searchQuery2.toLowerCase();
-    return Array.from(suggestions).filter(s => s.toLowerCase().includes(query)).sort();
+    return Array.from(suggestions).filter(s => typeof s === 'string' && s.toLowerCase().includes(query)).sort();
   }, [availableBrands, availableModels, searchQuery2]);
 
   const bookingPersonBuyerSuggestions = useMemo(() => {
     const suggestions = new Set<string>();
-    availableBookingPersons.forEach(person => suggestions.add(person));
-    database.forEach(entry => {
-      if (entry.buyer) suggestions.add(entry.buyer);
+    availableBookingPersons.forEach(person => {
+      if (person) suggestions.add(String(person));
+    });
+    dataSource.forEach(entry => {
+      if (entry.buyer) suggestions.add(String(entry.buyer));
     });
     const query = searchQuery3.toLowerCase();
-    return Array.from(suggestions).filter(s => s.toLowerCase().includes(query)).sort();
-  }, [database, availableBookingPersons, searchQuery3]);
+    return Array.from(suggestions).filter(s => typeof s === 'string' && s.toLowerCase().includes(query)).sort();
+  }, [dataSource, availableBookingPersons, searchQuery3]);
 
   if (isLoadingData || (isAdmin && isLoadingAllData)) {
     return (
@@ -483,7 +558,7 @@ const Database = () => {
                     <TableHead>Buyer</TableHead>
                     <TableHead>Outward Date</TableHead>
                     <TableHead>Outward Amount</TableHead>
-                    {isAdmin && <TableHead className="text-right">Actions</TableHead>}
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -499,13 +574,13 @@ const Database = () => {
                       <TableCell>{entry.buyer || "N/A"}</TableCell>
                       <TableCell>{entry.outwardDate ? format(entry.outwardDate, "dd/MM/yyyy") : "N/A"}</TableCell>
                       <TableCell>{entry.outwardAmount ? `₹${entry.outwardAmount}` : "N/A"}</TableCell>
-                      {isAdmin && (
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="icon" onClick={() => handleEdit(entry.imei)}>
-                              <Edit className="h-4 w-4" />
-                              <span className="sr-only">Edit</span>
-                            </Button>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="icon" onClick={() => handleEdit(entry.imei)}>
+                            <Edit className="h-4 w-4" />
+                            <span className="sr-only">Edit</span>
+                          </Button>
+                          {isAdmin && (
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="destructive" size="icon">
@@ -526,9 +601,9 @@ const Database = () => {
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>
-                          </div>
-                        </TableCell>
-                      )}
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

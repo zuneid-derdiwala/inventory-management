@@ -33,16 +33,16 @@ const ProfileSettings = () => {
             .from('profiles')
             .select('username, avatar_url')
             .eq('id', user.id)
-            .single();
+            .maybeSingle();
 
           if (error) {
-            
+            console.error('Error fetching profile:', error);
             // If avatar_url column doesn't exist, try just username
             const { data: usernameData, error: usernameError } = await supabase
               .from('profiles')
               .select('username')
               .eq('id', user.id)
-              .single();
+              .maybeSingle();
 
             if (usernameError) {
               console.error('Error fetching username:', usernameError);
@@ -90,51 +90,104 @@ const ProfileSettings = () => {
     const loadingToastId = showLoading('Updating profile...');
 
     try {
-      // Try to update with avatar_url first
-      let updateData: any = {
-        id: user.id,
-        username: username.trim(),
-        email: user.email
-      };
-
-      // Only include avatar_url if it exists
-      if (avatarUrl) {
-        updateData.avatar_url = avatarUrl;
-      }
-
-      const { error } = await supabase
+      // Check if profile exists first
+      const { data: existingProfile } = await supabase
         .from('profiles')
-        .upsert(updateData);
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      let error;
+      
+      if (existingProfile) {
+        // Profile exists, use update
+        let updateData: any = {
+          username: username.trim(),
+        };
+
+        // Only include avatar_url if it exists
+        if (avatarUrl) {
+          updateData.avatar_url = avatarUrl;
+        }
+
+        const updateResponse = await supabase
+          .from('profiles')
+          .update(updateData)
+          .eq('id', user.id);
+        
+        error = updateResponse.error;
+      } else {
+        // Profile doesn't exist, use insert
+        let insertData: any = {
+          id: user.id,
+          username: username.trim(),
+          email: user.email
+        };
+
+        // Only include avatar_url if it exists
+        if (avatarUrl) {
+          insertData.avatar_url = avatarUrl;
+        }
+
+        const insertResponse = await supabase
+          .from('profiles')
+          .insert(insertData);
+        
+        error = insertResponse.error;
+      }
 
       if (error) {
         console.error('Error updating profile:', error);
         
-        // If avatar_url column doesn't exist, try without it
-        if (error.message.includes('avatar_url')) {
-          const { error: usernameError } = await supabase
-            .from('profiles')
-            .upsert({
-              id: user.id,
-              username: username.trim(),
-              email: user.email
-            });
+        // Handle specific error cases
+        if (error.code === '23505') {
+          showError('Username already exists. Please choose a different username.');
+        } else if (error.code === '42501') {
+          showError('Permission denied. Please run "supabase_fix_profiles_rls.sql" in your Supabase SQL Editor to fix RLS policies.');
+        } else if (error.message?.includes('avatar_url')) {
+          // If avatar_url column doesn't exist, try without it
+          if (existingProfile) {
+            const { error: usernameError } = await supabase
+              .from('profiles')
+              .update({ username: username.trim() })
+              .eq('id', user.id);
 
-          if (usernameError) {
-            if (usernameError.code === '23505') {
-              showError('Username already exists. Please choose a different username.');
+            if (usernameError) {
+              if (usernameError.code === '23505') {
+                showError('Username already exists. Please choose a different username.');
+              } else {
+                showError('Failed to update profile. Please run the database setup script.');
+              }
             } else {
-              showError('Failed to update profile. Please run the database setup script.');
+              showSuccess('Profile updated successfully! (Avatar upload not available - please run database setup)');
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
             }
           } else {
-            showSuccess('Profile updated successfully! (Avatar upload not available - please run database setup)');
-            setTimeout(() => {
-              window.location.reload();
-            }, 1000);
+            const { error: insertError } = await supabase
+              .from('profiles')
+              .insert({
+                id: user.id,
+                username: username.trim(),
+                email: user.email
+              });
+
+            if (insertError) {
+              if (insertError.code === '23505') {
+                showError('Username already exists. Please choose a different username.');
+              } else {
+                showError('Failed to create profile. Please run the database setup script.');
+              }
+            } else {
+              showSuccess('Profile created successfully! (Avatar upload not available - please run database setup)');
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
+            }
           }
-        } else if (error.code === '23505') {
-          showError('Username already exists. Please choose a different username.');
         } else {
-          showError('Failed to update profile');
+          showError(`Failed to update profile: ${error.message || 'Unknown error'}`);
         }
       } else {
         showSuccess('Profile updated successfully!');

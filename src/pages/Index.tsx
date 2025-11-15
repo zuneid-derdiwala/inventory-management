@@ -40,30 +40,34 @@ const Index = () => {
             .from('profiles')
             .select('username, avatar_url')
             .eq('id', user.id)
-            .single();
-          
+            .maybeSingle(); // Use maybeSingle() to handle missing profiles
           
           if (error) {
-            
-            // If avatar_url column doesn't exist, try just username
-            const { data: usernameData, error: usernameError } = await supabase
-              .from('profiles')
-              .select('username')
-              .eq('id', user.id)
-              .single();
-
-            if (usernameError) {
-              console.error('Error fetching username:', usernameError);
-            } else {
-              setUsername(usernameData?.username || '');
-              setAvatarUrl(''); // No avatar_url column available
+            console.error('Error fetching profile:', error);
+            // Set fallback username from email
+            if (user?.email) {
+              setUsername(user.email.split('@')[0] || 'User');
             }
+            setAvatarUrl('');
+            return;
+          }
+
+          if (data) {
+            setUsername(data.username || '');
+            setAvatarUrl(data.avatar_url || '');
           } else {
-            setUsername(data?.username || '');
-            setAvatarUrl(data?.avatar_url || '');
+            // Profile doesn't exist, use email as fallback
+            if (user?.email) {
+              setUsername(user.email.split('@')[0] || 'User');
+            }
+            setAvatarUrl('');
           }
         } catch (error) {
           console.error('Error fetching username:', error);
+          // Set fallback username from email
+          if (user?.email) {
+            setUsername(user.email.split('@')[0] || 'User');
+          }
         } finally {
           setIsLoadingUsername(false);
         }

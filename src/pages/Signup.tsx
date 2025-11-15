@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff, Mail, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const Signup = () => {
@@ -19,6 +19,7 @@ const Signup = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [signupSuccess, setSignupSuccess] = useState(false);
   
   const { signUp } = useAuth();
   const navigate = useNavigate();
@@ -26,6 +27,7 @@ const Signup = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSignupSuccess(false);
 
     // Validation
     if (password !== confirmPassword) {
@@ -48,13 +50,66 @@ const Signup = () => {
     const result = await signUp(email, password, username);
     
     if (result.success) {
-      navigate("/login");
+      setSignupSuccess(true);
     } else {
       setError(result.error || "Signup failed");
     }
     
     setIsLoading(false);
   };
+
+  // Show success message after signup
+  if (signupSuccess) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-bold text-green-600">Check Your Email</CardTitle>
+            <CardDescription>
+              We've sent a verification link to your email address
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col items-center space-y-4">
+              <Mail className="h-16 w-16 text-primary" />
+              <Alert>
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Account created successfully!</strong>
+                  <br />
+                  Please check your email ({email}) and click the verification link to activate your account.
+                  <br />
+                  <br />
+                  If you don't see the email, check your spam folder.
+                </AlertDescription>
+              </Alert>
+            </div>
+            
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={() => {
+                  setSignupSuccess(false);
+                  setEmail("");
+                  setPassword("");
+                  setConfirmPassword("");
+                  setUsername("");
+                }}
+                variant="outline"
+                className="w-full"
+              >
+                Sign Up Another Account
+              </Button>
+              <Link to="/login">
+                <Button variant="ghost" className="w-full">
+                  Back to Login
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 items-center justify-center p-4">

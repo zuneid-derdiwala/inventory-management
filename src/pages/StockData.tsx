@@ -1,17 +1,22 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Edit, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 
 const StockData = () => {
-  const { database, isLoadingData } = useData();
+  const { database, isLoadingData, deleteEntry, availableBrands, availableModels, getModelsByBrand, availableBookingPersons: allBookingPersons } = useData();
+  const { isAdmin } = useAuth();
+  const navigate = useNavigate();
   
   // Initialize state from localStorage or defaults
   const [selectedModel, setSelectedModel] = useState<string>(() => {
@@ -184,78 +189,105 @@ const StockData = () => {
   // For display purposes, use displayItems which only shows in-stock items
   const filteredStock = displayItems;
 
-  // Get unique options for filters
-  const availableModels = useMemo(() => {
-    const models = new Set<string>();
-    dataSource.forEach(entry => {
-      // If a brand is selected, only show models from that brand
-      if (entry.model && (selectedBrand === "all" || entry.brand === selectedBrand)) {
-        models.add(entry.model);
-      }
-    });
-    const result = Array.from(models).sort();
-    return result;
-  }, [dataSource, selectedBrand]);
+  // Get unique options for filters from DataContext (all available brands/models)
+  // Filter models based on selected brand
+  const filteredModels = useMemo(() => {
+    const allModels = new Set<string>();
+    
+    if (selectedBrand === "all") {
+      // If no brand selected, show all models from DataContext (all available models)
+      // Get all models from all brands
+      availableBrands.forEach(brand => {
+        const modelsForBrand = getModelsByBrand(brand);
+        modelsForBrand.forEach(model => allModels.add(model));
+      });
+      // Also include models from entries (in case they're not in DataContext yet)
+      dataSource.forEach(entry => {
+        if (entry.model) allModels.add(entry.model);
+      });
+    } else {
+      // If brand selected, show models for that brand from DataContext
+      const modelsForBrand = getModelsByBrand(selectedBrand);
+      modelsForBrand.forEach(model => allModels.add(model));
+      
+      // Also include models from entries that match the selected brand
+      // This ensures models in entries are visible even if not in the models table
+      dataSource.forEach(entry => {
+        if (entry.brand === selectedBrand && entry.model) {
+          allModels.add(entry.model);
+        }
+      });
+    }
+    
+    return Array.from(allModels).sort();
+  }, [dataSource, selectedBrand, getModelsByBrand, availableBrands]);
 
-  const availableBrands = useMemo(() => {
-    const brands = new Set<string>();
-    dataSource.forEach(entry => {
-      // If a model is selected, only show brands that have that model
-      if (entry.brand && (selectedModel === "all" || entry.model === selectedModel)) {
-        brands.add(entry.brand);
-      }
-    });
-    const result = Array.from(brands).sort();
-    return result;
-  }, [dataSource, selectedModel]);
+  // Filter brands based on selected model
+  const filteredBrands = useMemo(() => {
+    if (selectedModel === "all") {
+      // If no model selected, show all brands from DataContext
+      return availableBrands;
+    } else {
+      // If model selected, show only brands that have this model
+      const brandsWithModel = availableBrands.filter(brand => {
+        const modelsForBrand = getModelsByBrand(brand);
+        return modelsForBrand.includes(selectedModel);
+      });
+      return brandsWithModel;
+    }
+  }, [availableBrands, selectedModel, getModelsByBrand]);
 
+  // Get booking persons from DataContext (all available) and also from entries
   const availableBookingPersons = useMemo(() => {
     const bookingPersons = new Set<string>();
+    // Add all booking persons from DataContext
+    allBookingPersons.forEach(person => bookingPersons.add(person));
+    // Also add booking persons from entries (in case they're not in DataContext yet)
     dataSource.forEach(entry => {
       if (entry.bookingPerson) bookingPersons.add(entry.bookingPerson);
     });
     const result = Array.from(bookingPersons).sort();
     return result;
-  }, [dataSource]);
+  }, [dataSource, allBookingPersons]);
 
   // Validate stored filters when data is loaded
   useEffect(() => {
-    if (availableModels.length > 0 && availableBrands.length > 0) {
+    if (filteredModels.length > 0 && filteredBrands.length > 0) {
       // Check if stored model is still valid
-      if (selectedModel !== "all" && !availableModels.includes(selectedModel)) {
+      if (selectedModel !== "all" && !filteredModels.includes(selectedModel)) {
         // Don't clear, just keep the selection - it will show "no items found" which is correct
       }
       
       // Check if stored brand is still valid
-      if (selectedBrand !== "all" && !availableBrands.includes(selectedBrand)) {
+      if (selectedBrand !== "all" && !filteredBrands.includes(selectedBrand)) {
         // Don't clear, just keep the selection - it will show "no items found" which is correct
       }
     }
-  }, [availableModels, availableBrands, selectedModel, selectedBrand]);
+  }, [filteredModels, filteredBrands, selectedModel, selectedBrand]);
 
   // Clear model selection when brand changes (only when data is loaded)
   useEffect(() => {
-    if (selectedBrand !== "all" && availableModels.length > 0) {
+    if (selectedBrand !== "all" && filteredModels.length > 0) {
       // Check if the currently selected model is available for the selected brand
-      const isModelAvailable = availableModels.includes(selectedModel);
+      const isModelAvailable = filteredModels.includes(selectedModel);
       if (!isModelAvailable && selectedModel !== "all") {
         setSelectedModel("all");
         localStorage.setItem('stockData_selectedModel', 'all');
       }
     }
-  }, [selectedBrand, availableModels, selectedModel]);
+  }, [selectedBrand, filteredModels, selectedModel]);
 
   // Clear brand selection when model changes (only when data is loaded)
   useEffect(() => {
-    if (selectedModel !== "all" && availableBrands.length > 0) {
+    if (selectedModel !== "all" && filteredBrands.length > 0) {
       // Check if the currently selected brand is available for the selected model
-      const isBrandAvailable = availableBrands.includes(selectedBrand);
+      const isBrandAvailable = filteredBrands.includes(selectedBrand);
       if (!isBrandAvailable && selectedBrand !== "all") {
         setSelectedBrand("all");
         localStorage.setItem('stockData_selectedBrand', 'all');
       }
     }
-  }, [selectedModel, availableBrands, selectedBrand]);
+  }, [selectedModel, filteredBrands, selectedBrand]);
 
   const clearFilters = () => {
     setSelectedModel("all");
@@ -265,6 +297,17 @@ const StockData = () => {
     localStorage.removeItem('stockData_selectedModel');
     localStorage.removeItem('stockData_selectedBrand');
     localStorage.removeItem('stockData_selectedBookingPerson');
+  };
+
+  const handleEdit = (imei: string) => {
+    navigate(`/entry-form?imei=${imei}`);
+  };
+
+  const handleDelete = async (imei: string) => {
+    const success = await deleteEntry(imei);
+    if (success) {
+      // Data will be refreshed automatically by the deleteEntry function
+    }
   };
 
   if (isLoadingData) {
@@ -390,7 +433,7 @@ const StockData = () => {
                 <SearchableSelect
                   value={selectedBrand}
                   onValueChange={setSelectedBrand}
-                  options={availableBrands}
+                  options={filteredBrands}
                   placeholder={selectedModel !== "all" ? `Select brand for ${selectedModel}` : "Select brand"}
                   searchPlaceholder="Search brands..."
                   emptyText={selectedModel !== "all" ? `No brands found for ${selectedModel}` : "No brands found."}
@@ -409,7 +452,7 @@ const StockData = () => {
                 <SearchableSelect
                   value={selectedModel}
                   onValueChange={setSelectedModel}
-                  options={availableModels}
+                  options={filteredModels}
                   placeholder={selectedBrand !== "all" ? `Select model for ${selectedBrand}` : "Select model"}
                   searchPlaceholder="Search models..."
                   emptyText={selectedBrand !== "all" ? `No models found for ${selectedBrand}` : "No models found."}
@@ -478,6 +521,42 @@ const StockData = () => {
                           <div className="grid gap-3">
                             {modelEntries.map((entry, entryIndex) => (
                               <div key={entryIndex} className="bg-muted/30 p-3 rounded border border-border">
+                                <div className="flex justify-between items-start mb-3">
+                                  <h5 className="font-semibold text-foreground">Entry: {entry.imei}</h5>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleEdit(entry.imei)}
+                                      className="h-8"
+                                    >
+                                      <Edit className="h-3 w-3 mr-1" />
+                                      Edit
+                                    </Button>
+                                    {isAdmin && (
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <Button variant="destructive" size="sm" className="h-8">
+                                            <Trash2 className="h-3 w-3 mr-1" />
+                                            Delete
+                                          </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                              This action cannot be undone. This will permanently delete the entry with IMEI: {entry.imei}.
+                                            </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => handleDelete(entry.imei)}>Delete</AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+                                    )}
+                                  </div>
+                                </div>
                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                   <div>
                                     <span className="font-medium text-muted-foreground">IMEI:</span>
@@ -503,7 +582,7 @@ const StockData = () => {
                                   </div>
                                   <div>
                                     <span className="font-medium text-muted-foreground">Inward Amount:</span>
-                                    <span className="ml-2 text-foreground">{entry.inwardAmount || 'N/A'}</span>
+                                    <span className="ml-2 text-foreground">{entry.inwardAmount ? `₹${entry.inwardAmount}` : 'N/A'}</span>
                                   </div>
                                   <div>
                                     <span className="font-medium text-muted-foreground">Outward Date:</span>
@@ -513,7 +592,7 @@ const StockData = () => {
                                   </div>
                                   <div>
                                     <span className="font-medium text-muted-foreground">Outward Amount:</span>
-                                    <span className="ml-2 text-foreground">{entry.outwardAmount || 'N/A'}</span>
+                                    <span className="ml-2 text-foreground">{entry.outwardAmount ? `₹${entry.outwardAmount}` : 'N/A'}</span>
                                   </div>
                                   <div>
                                     <span className="font-medium text-muted-foreground">Buyer:</span>

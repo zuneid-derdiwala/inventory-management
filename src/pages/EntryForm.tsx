@@ -37,8 +37,30 @@ const initialFormData: EntryData = {
   outwardAmount: undefined,
 };
 
+// IMEI validation function
+const validateIMEI = (imei: string): { isValid: boolean; error?: string } => {
+  if (!imei || imei.trim().length === 0) {
+    return { isValid: false, error: "IMEI is required" };
+  }
+  
+  // Remove spaces, dashes, and other non-digit characters for validation
+  const cleanedIMEI = imei.replace(/[\s\-]/g, '');
+  
+  // Check if it contains only digits
+  if (!/^\d+$/.test(cleanedIMEI)) {
+    return { isValid: false, error: "IMEI must contain only numbers" };
+  }
+  
+  // IMEI should be 14 or 15 digits (standard is 15, but some systems use 14)
+  if (cleanedIMEI.length < 14 || cleanedIMEI.length > 15) {
+    return { isValid: false, error: "IMEI must be 14 or 15 digits" };
+  }
+  
+  return { isValid: true };
+};
+
 const EntryForm = () => {
-  const { addEntry, searchEntry, updateEntry, deleteEntry, availableBrands, getModelsByBrand, availableSellers, availableBookingPersons, isLoadingData } = useData(); // Added isLoadingData
+  const { addEntry, searchEntry, updateEntry, deleteEntry, availableBrands, getModelsByBrand, availableSellers, availableBookingPersons, isLoadingData, database } = useData(); // Added isLoadingData and database
   const [formData, setFormData] = useState<EntryData>(initialFormData);
   const [isUpdateDeleteEnabled, setIsUpdateDeleteEnabled] = useState(false);
   const [isDeviceInfoOpen, setIsDeviceInfoOpen] = useState(true);
@@ -46,20 +68,51 @@ const EntryForm = () => {
   const [isOutwardOpen, setIsOutwardOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [showManualInput, setShowManualInput] = useState(false);
+  const [isInwardDatePickerOpen, setIsInwardDatePickerOpen] = useState(false);
+  const [isOutwardDatePickerOpen, setIsOutwardDatePickerOpen] = useState(false);
+  const [imeiError, setImeiError] = useState<string | undefined>(undefined);
 
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
     const imeiFromUrl = searchParams.get("imei");
     if (imeiFromUrl) {
-      setFormData((prev) => ({ ...prev, imei: imeiFromUrl }));
-      handleSearch(imeiFromUrl);
+      // Validate IMEI from URL
+      const validation = validateIMEI(imeiFromUrl);
+      if (validation.isValid) {
+        setFormData((prev) => ({ ...prev, imei: imeiFromUrl }));
+        setImeiError(undefined);
+        handleSearch(imeiFromUrl);
+      } else {
+        setImeiError(validation.error);
+        setFormData((prev) => ({ ...prev, imei: imeiFromUrl }));
+      }
     }
   }, [searchParams]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
-    setFormData((prev) => ({ ...prev, [id]: value }));
+    
+    // Special handling for IMEI field with validation
+    if (id === "imei") {
+      // Allow only digits, spaces, and dashes
+      const cleanedValue = value.replace(/[^\d\s\-]/g, '');
+      setFormData((prev) => ({ ...prev, [id]: cleanedValue }));
+      
+      // Validate IMEI in real-time (only if user has typed something)
+      if (cleanedValue.trim().length > 0) {
+        const validation = validateIMEI(cleanedValue);
+        if (!validation.isValid) {
+          setImeiError(validation.error);
+        } else {
+          setImeiError(undefined);
+        }
+      } else {
+        setImeiError(undefined);
+      }
+    } else {
+      setFormData((prev) => ({ ...prev, [id]: value }));
+    }
   };
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,6 +123,12 @@ const EntryForm = () => {
 
   const handleDateChange = (date: Date | undefined, field: keyof EntryData) => {
     setFormData((prev) => ({ ...prev, [field]: date }));
+    // Close the date picker after selection
+    if (field === "inwardDate") {
+      setIsInwardDatePickerOpen(false);
+    } else if (field === "outwardDate") {
+      setIsOutwardDatePickerOpen(false);
+    }
   };
 
   const resetForm = () => {
@@ -80,10 +139,19 @@ const EntryForm = () => {
     setIsOutwardOpen(false);
     setIsScanning(false);
     setShowManualInput(false);
+    setImeiError(undefined);
     showSuccess("Form has been reset.");
   };
 
   const handleAddEntry = async () => {
+    // Validate IMEI before adding
+    const imeiValidation = validateIMEI(formData.imei);
+    if (!imeiValidation.isValid) {
+      setImeiError(imeiValidation.error);
+      showError(imeiValidation.error || "Invalid IMEI");
+      return;
+    }
+    
     const success = await addEntry(formData);
     if (success) {
       resetForm();
@@ -93,9 +161,19 @@ const EntryForm = () => {
   const handleSearch = async (imeiToSearch?: string) => {
     const imei = imeiToSearch || formData.imei;
     if (!imei) {
+      setImeiError("IMEI is required to search.");
       showError("IMEI is required to search.");
       return;
     }
+    
+    // Validate IMEI before searching
+    const imeiValidation = validateIMEI(imei);
+    if (!imeiValidation.isValid) {
+      setImeiError(imeiValidation.error);
+      showError(imeiValidation.error || "Invalid IMEI");
+      return;
+    }
+    
     const foundEntry = await searchEntry(imei);
     if (foundEntry) {
       setFormData(foundEntry);
@@ -114,6 +192,14 @@ const EntryForm = () => {
   };
 
   const handleUpdate = async () => {
+    // Validate IMEI before updating
+    const imeiValidation = validateIMEI(formData.imei);
+    if (!imeiValidation.isValid) {
+      setImeiError(imeiValidation.error);
+      showError(imeiValidation.error || "Invalid IMEI");
+      return;
+    }
+    
     const success = await updateEntry(formData);
     if (success) {
       resetForm();
@@ -129,9 +215,20 @@ const EntryForm = () => {
 
   const handleScanSuccess = (decodedText: string) => {
     console.log("QR Code scanned successfully:", decodedText);
+    
+    // Validate scanned IMEI
+    const imeiValidation = validateIMEI(decodedText);
+    if (!imeiValidation.isValid) {
+      setImeiError(imeiValidation.error);
+      showError(`Invalid IMEI scanned: ${imeiValidation.error}`);
+      setIsScanning(false);
+      return;
+    }
+    
     showSuccess(`IMEI scanned: ${decodedText}`);
     setIsScanning(false);
     setFormData((prev) => ({ ...prev, imei: decodedText }));
+    setImeiError(undefined);
     // Automatically search for the scanned IMEI
     handleSearch(decodedText);
   };
@@ -158,7 +255,31 @@ const EntryForm = () => {
     setFormData((prev) => ({ ...prev, bookingPerson: value }));
   };
 
-  const modelsForSelectedBrand = getModelsByBrand(formData.brand || "");
+  // Get models for selected brand, including models from entries
+  const modelsForSelectedBrand = React.useMemo(() => {
+    const modelsSet = new Set<string>();
+    
+    // Get models from models table for the selected brand
+    if (formData.brand) {
+      const modelsFromTable = getModelsByBrand(formData.brand);
+      modelsFromTable.forEach(model => modelsSet.add(model));
+      
+      // Also include models from entries that match the selected brand
+      // This ensures models in entries are visible even if not in the models table
+      database.forEach(entry => {
+        if (entry.brand === formData.brand && entry.model) {
+          modelsSet.add(entry.model);
+        }
+      });
+    }
+    
+    // If formData.model is set (from editing), ensure it's included
+    if (formData.model) {
+      modelsSet.add(formData.model);
+    }
+    
+    return Array.from(modelsSet).sort();
+  }, [formData.brand, formData.model, getModelsByBrand, database]);
 
   // Check if we have any data available
   const hasNoData = !isLoadingData && 
@@ -224,14 +345,25 @@ const EntryForm = () => {
               <div className="grid gap-2">
                 <Label htmlFor="imei">IMEI (Main Input)</Label>
                 <div className="flex gap-2">
-                  <Input
-                    id="imei"
-                    value={formData.imei}
-                    onChange={handleChange}
-                    placeholder="Enter IMEI"
-                    className="flex-grow"
-                    disabled={isScanning}
-                  />
+                  <div className="flex-grow">
+                    <Input
+                      id="imei"
+                      value={formData.imei}
+                      onChange={handleChange}
+                      placeholder="Enter IMEI (14-15 digits)"
+                      className={cn("flex-grow", imeiError && "border-red-500 focus-visible:ring-red-500")}
+                      disabled={isScanning}
+                      maxLength={20} // Allow for spaces/dashes in formatting
+                    />
+                    {imeiError && (
+                      <p className="text-sm text-red-500 mt-1">{imeiError}</p>
+                    )}
+                    {!imeiError && formData.imei && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {formData.imei.replace(/[\s\-]/g, '').length} digits
+                      </p>
+                    )}
+                  </div>
                   {!isScanning ? (
                     <Button onClick={() => setIsScanning(true)} variant="outline" size="icon">
                       <QrCode className="h-4 w-4" />
@@ -272,15 +404,26 @@ const EntryForm = () => {
                     {showManualInput && (
                       <div className="mt-3 p-3 border rounded-md bg-blue-50 dark:bg-blue-900/20">
                         <p className="text-sm font-medium mb-2">Manual IMEI Input:</p>
-                        <div className="flex gap-2">
+                        <div>
                           <Input
-                            placeholder="Enter IMEI manually"
+                            placeholder="Enter IMEI manually (14-15 digits)"
                             value={formData.imei}
                             onChange={handleChange}
                             id="imei"
+                            className={cn("w-full", imeiError && "border-red-500 focus-visible:ring-red-500")}
+                            maxLength={20} // Allow for spaces/dashes in formatting
                           />
+                          {imeiError && (
+                            <p className="text-sm text-red-500 mt-1">{imeiError}</p>
+                          )}
+                          {!imeiError && formData.imei && (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {formData.imei.replace(/[\s\-]/g, '').length} digits
+                            </p>
+                          )}
                           <Button
                             size="sm"
+                            className="mt-2"
                             onClick={() => {
                               if (formData.imei) {
                                 handleSearch(formData.imei);
@@ -418,7 +561,7 @@ const EntryForm = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="inwardDate">Inward Date</Label>
-                  <Popover>
+                  <Popover open={isInwardDatePickerOpen} onOpenChange={setIsInwardDatePickerOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant={"outline"}
@@ -477,7 +620,7 @@ const EntryForm = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="outwardDate">Outward Date</Label>
-                  <Popover>
+                  <Popover open={isOutwardDatePickerOpen} onOpenChange={setIsOutwardDatePickerOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant={"outline"}

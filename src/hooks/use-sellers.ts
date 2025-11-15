@@ -7,39 +7,49 @@ import { useAuth } from "@/context/AuthContext";
 
 const TABLE_NAME = "sellers";
 
+export interface Seller {
+  id: string;
+  name: string;
+}
+
 export function useSellers() {
-  const [availableSellers, setAvailableSellers] = useState<string[]>([]);
+  const [availableSellers, setAvailableSellers] = useState<Seller[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasFetched, setHasFetched] = useState(false);
   const { user } = useAuth();
 
   const fetchSellers = useCallback(async () => {
     setIsLoading(true);
     
-    // Only fetch if user is authenticated
-    if (!user) {
-      setAvailableSellers([]);
-      setIsLoading(false);
-      return;
-    }
-    
     // Check if supabase is properly configured
     if (typeof supabase === 'object' && 'from' in supabase) {
-      // Get all sellers (no user filtering for reference data)
-      const response: any = await supabase.from(TABLE_NAME).select("name").order("name", { ascending: true });
+      // Get sellers filtered by is_deleted = false (visible to everyone, no user_id restriction)
+      let query = supabase.from(TABLE_NAME).select("id, name");
+      
+      // Only show non-deleted sellers
+      query = query.eq('is_deleted', false);
+      
+      const response: any = await query.order("name", { ascending: true });
 
       if (response.error) {
         console.error("Supabase Error fetching sellers:", response.error); // Detailed log
         showError("Failed to load sellers.");
         setAvailableSellers([]);
       } else {
-        setAvailableSellers((response.data || []).map((item: { name: string }) => item.name));
+        const sellers = (response.data || []).map((item: { id: string; name: string }) => ({ id: item.id, name: item.name }));
+        setAvailableSellers(sellers);
       }
     } else {
       // Fallback to local storage if Supabase is not configured
       const storedSellers = localStorage.getItem("sellers");
       if (storedSellers) {
         try {
-          setAvailableSellers(JSON.parse(storedSellers));
+          const parsed = JSON.parse(storedSellers);
+          // Convert old format (string[]) to new format (Seller[])
+          const convertedSellers = Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string'
+            ? parsed.map((name: string, index: number) => ({ id: `local-${index}`, name }))
+            : parsed;
+          setAvailableSellers(convertedSellers);
         } catch (e) {
           console.error("Error parsing stored sellers from local storage:", e); // Detailed log
           setAvailableSellers([]);
@@ -47,114 +57,214 @@ export function useSellers() {
       }
     }
     setIsLoading(false);
-  }, [user]);
+    setHasFetched(true);
+  }, []); // Remove user dependency - fetch for everyone
 
   useEffect(() => {
-    fetchSellers();
-  }, [fetchSellers]);
+    // Only fetch on initial mount, not on tab/route changes
+    if (!hasFetched) {
+      fetchSellers();
+    }
+  }, [fetchSellers, hasFetched]);
 
-  const addSeller = async (seller: string): Promise<boolean> => {
+  const addSeller = async (seller: string): Promise<Seller | null> => {
     const trimmedSeller = seller.trim();
     if (!trimmedSeller) {
       console.warn("Attempted to add an empty seller name.");
-      return false;
+      return null;
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
+      // Check if seller already exists (search without user_id constraint)
+      // First try with is_deleted filter if column exists
+      let { data: existingSeller } = await supabase
+        .from(TABLE_NAME)
+        .select('id, name')
+        .eq('name', trimmedSeller)
+        .eq('is_deleted', false)
+        .maybeSingle();
+      
+      // If not found with is_deleted filter, try without it (in case column doesn't exist)
+      if (!existingSeller) {
+        const { data: foundSeller } = await supabase
+          .from(TABLE_NAME)
+          .select('id, name')
+          .eq('name', trimmedSeller)
+          .maybeSingle();
+        if (foundSeller) {
+          existingSeller = foundSeller;
+        }
+      }
+      
+      if (existingSeller) {
+        // Seller already exists, return it
+        return { id: existingSeller.id, name: existingSeller.name };
+      }
+      
+      // Seller doesn't exist, insert it with created_at
       const { data, error: upsertError } = await supabase
         .from(TABLE_NAME)
-        .upsert({ name: trimmedSeller }, { onConflict: 'name', ignoreDuplicates: true })
-        .select('name');
+        .insert({ 
+          name: trimmedSeller, 
+          user_id: user?.id,
+          created_at: new Date().toISOString()
+        })
+        .select('id, name');
 
       if (upsertError) {
-        console.error(`Supabase Error adding/upserting seller '${trimmedSeller}':`, upsertError); // Detailed log
-        showError(`Failed to add seller '${trimmedSeller}' to database.`);
-        return false;
+        // If error is duplicate key (409 or 23505), try to find the existing seller
+        // Check for duplicate key errors (23505) or conflict errors
+        const isDuplicateError = upsertError.code === '23505' || 
+                                 upsertError.code === 'PGRST116' || 
+                                 upsertError.message?.includes('duplicate key') ||
+                                 upsertError.message?.includes('already exists');
+        
+        if (isDuplicateError) {
+          // Try to find the seller (search without user_id constraint)
+          const { data: foundSeller } = await supabase
+            .from(TABLE_NAME)
+            .select('id, name')
+            .eq('name', trimmedSeller)
+            .eq('is_deleted', false)
+            .maybeSingle();
+          
+          if (foundSeller) {
+            // Seller exists, return it
+            return { id: foundSeller.id, name: foundSeller.name };
+          }
+          
+          // If not found with is_deleted filter, try without it (in case column doesn't exist)
+          const { data: foundSeller2 } = await supabase
+            .from(TABLE_NAME)
+            .select('id, name')
+            .eq('name', trimmedSeller)
+            .maybeSingle();
+          
+          if (foundSeller2) {
+            return { id: foundSeller2.id, name: foundSeller2.name };
+          }
+        }
+        // For other errors, log but don't show error to user (might be duplicate during bulk import)
+        console.warn(`Supabase Error adding seller '${trimmedSeller}':`, upsertError);
+        // Try one more time to find existing seller
+        const { data: foundSeller } = await supabase
+          .from(TABLE_NAME)
+          .select('id, name')
+          .eq('name', trimmedSeller)
+          .maybeSingle();
+        
+        if (foundSeller) {
+          return { id: foundSeller.id, name: foundSeller.name };
+        }
+        return null;
       }
 
       if (data && data.length > 0) {
+        const newSeller = { id: data[0].id, name: data[0].name };
         setAvailableSellers(prev => {
-          if (!prev.includes(trimmedSeller)) {
-            return [...prev, trimmedSeller].sort();
+          if (!prev.find(s => s.id === newSeller.id || s.name === newSeller.name)) {
+            return [...prev, newSeller].sort((a, b) => a.name.localeCompare(b.name));
           }
           return prev;
         });
+        return newSeller;
       } else {
-        setAvailableSellers(prev => {
-          if (!prev.includes(trimmedSeller)) {
-            return [...prev, trimmedSeller].sort();
-          }
-          return prev;
-        });
+        // Seller already exists, find and return it
+        const existingSeller = availableSellers.find(s => s.name === trimmedSeller);
+        return existingSeller || null;
       }
-      return true;
     } else {
       // Fallback to local storage if Supabase is not configured
-      if (availableSellers.includes(trimmedSeller)) {
-        return true;
+      const existingSeller = availableSellers.find(s => s.name === trimmedSeller);
+      if (existingSeller) {
+        return existingSeller;
       }
-      const newSellers = [...availableSellers, trimmedSeller].sort();
+      const newSeller: Seller = { id: `local-${Date.now()}`, name: trimmedSeller };
+      const newSellers = [...availableSellers, newSeller].sort((a, b) => a.name.localeCompare(b.name));
       setAvailableSellers(newSellers);
       localStorage.setItem("sellers", JSON.stringify(newSellers));
-      return true;
+      return newSeller;
     }
   };
 
-  const updateSeller = async (oldSeller: string, newSeller: string): Promise<boolean> => {
+  const updateSeller = async (sellerId: string, newSeller: string): Promise<boolean> => {
     const trimmedNewSeller = newSeller.trim();
     if (!trimmedNewSeller) {
       showError("New seller name cannot be empty.");
       return false;
     }
-    if (availableSellers.includes(trimmedNewSeller) && trimmedNewSeller !== oldSeller) {
+    const existingSeller = availableSellers.find(s => s.name === trimmedNewSeller && s.id !== sellerId);
+    if (existingSeller) {
       showError("Seller already exists.");
       return false;
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
-      const { error: updateError } = await supabase.from(TABLE_NAME).update({ name: trimmedNewSeller }).eq("name", oldSeller);
+      const { error: updateError } = await supabase.from(TABLE_NAME).update({ name: trimmedNewSeller }).eq("id", sellerId);
 
       if (updateError) {
-        console.error(`Supabase Error updating seller from '${oldSeller}' to '${trimmedNewSeller}':`, updateError); // Detailed log
+        console.error(`Supabase Error updating seller:`, updateError); // Detailed log
         showError("Failed to update seller.");
         return false;
       }
     } else {
-      const newSellers = availableSellers.map((s) => (s === oldSeller ? trimmedNewSeller : s)).sort();
+      const newSellers = availableSellers.map((s) => (s.id === sellerId ? { ...s, name: trimmedNewSeller } : s)).sort((a, b) => a.name.localeCompare(b.name));
       setAvailableSellers(newSellers);
       localStorage.setItem("sellers", JSON.stringify(newSellers));
     }
 
     setAvailableSellers((prev) =>
-      prev.map((s) => (s === oldSeller ? trimmedNewSeller : s)).sort()
+      prev.map((s) => (s.id === sellerId ? { ...s, name: trimmedNewSeller } : s)).sort((a, b) => a.name.localeCompare(b.name))
     );
-    showSuccess(`Seller '${oldSeller}' updated to '${trimmedNewSeller}'.`);
+    const oldSellerName = availableSellers.find(s => s.id === sellerId)?.name || sellerId;
+    showSuccess(`Seller '${oldSellerName}' updated to '${trimmedNewSeller}'.`);
     return true;
   };
 
-  const deleteSeller = async (seller: string): Promise<boolean> => {
-    if (!availableSellers.includes(seller)) {
+  const deleteSeller = async (sellerId: string): Promise<boolean> => {
+    const seller = availableSellers.find(s => s.id === sellerId);
+    if (!seller) {
       showError("Seller not found.");
       return false;
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
-      const { error: deleteError } = await supabase.from(TABLE_NAME).delete().eq("name", seller);
+      // Soft delete: set is_deleted = true instead of actually deleting
+      const { error: deleteError } = await supabase
+        .from(TABLE_NAME)
+        .update({ is_deleted: true })
+        .eq("id", sellerId);
 
       if (deleteError) {
-        console.error(`Supabase Error deleting seller '${seller}':`, deleteError); // Detailed log
+        console.error(`Supabase Error deleting seller:`, deleteError); // Detailed log
         showError("Failed to delete seller.");
         return false;
       }
     } else {
-      const newSellers = availableSellers.filter((s) => s !== seller);
+      const newSellers = availableSellers.filter((s) => s.id !== sellerId);
       setAvailableSellers(newSellers);
       localStorage.setItem("sellers", JSON.stringify(newSellers));
     }
 
-    setAvailableSellers((prev) => prev.filter((s) => s !== seller));
-    showSuccess(`Seller '${seller}' deleted.`);
+    // Remove from local state (it will be filtered out on next fetch)
+    setAvailableSellers((prev) => prev.filter((s) => s.id !== sellerId));
+    showSuccess(`Seller '${seller.name}' deleted.`);
     return true;
+  };
+
+  // Helper to get seller names array (for backward compatibility)
+  const getSellerNames = (): string[] => {
+    return availableSellers.map(s => s.name);
+  };
+
+  // Helper to get seller by name
+  const getSellerByName = (name: string): Seller | undefined => {
+    return availableSellers.find(s => s.name === name);
+  };
+
+  // Helper to get seller by id
+  const getSellerById = (id: string): Seller | undefined => {
+    return availableSellers.find(s => s.id === id);
   };
 
   return {
@@ -165,5 +275,8 @@ export function useSellers() {
     deleteSeller,
     isLoading,
     fetchSellers,
+    getSellerNames,
+    getSellerByName,
+    getSellerById,
   };
 }

@@ -37,6 +37,22 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // Check if email is verified
+  if (user && !user.email_confirmed_at) {
+    // Redirect to login page with email verification message
+    // The Login page will show a prominent alert with resend verification option
+    return (
+      <Navigate 
+        to="/login" 
+        state={{ 
+          from: location, 
+          message: "Please verify your email address before accessing this page. Check your inbox (and spam folder) for the verification link. If you didn't receive it, you can resend it below." 
+        }} 
+        replace 
+      />
+    );
+  }
+
   return <>{children}</>;
 };
 

@@ -15,12 +15,12 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import EmailVerification from "./pages/EmailVerification";
 import AssignData from "./pages/AssignData";
 import { DataProvider } from "@/context/DataContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import ProtectedRoute from "./components/ProtectedRoute";
-import AdminRoute from "./components/AdminRoute";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +39,7 @@ const App = () => (
               <Route path="/signup" element={<Signup />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/verify-email" element={<EmailVerification />} />
               
               <Route path="/assign-data" element={
                 <ProtectedRoute>
@@ -76,11 +77,11 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/manage-data" element={
-                <AdminRoute>
+                <ProtectedRoute>
                   <Layout>
                     <ManageDataPage />
                   </Layout>
-                </AdminRoute>
+                </ProtectedRoute>
               } />
               <Route path="/profile-settings" element={
                 <ProtectedRoute>

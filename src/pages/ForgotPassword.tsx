@@ -79,7 +79,16 @@ const ForgotPassword = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>
+                  {error}
+                  {error.includes("No account found") && (
+                    <div className="mt-2">
+                      <Link to="/signup" className="text-sm font-medium underline hover:no-underline">
+                        Sign up here
+                      </Link>
+                    </div>
+                  )}
+                </AlertDescription>
               </Alert>
             )}
             
