@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { showError, showSuccess } from "@/utils/toast";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/context/AuthContext";
 
 const TABLE_NAME = "sellers";
 
@@ -16,7 +15,6 @@ export function useSellers() {
   const [availableSellers, setAvailableSellers] = useState<Seller[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetched, setHasFetched] = useState(false);
-  const { user } = useAuth();
 
   const fetchSellers = useCallback(async () => {
     setIsLoading(true);
@@ -75,29 +73,24 @@ export function useSellers() {
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
-      // Check if seller already exists (search without user_id constraint)
-      // First try with is_deleted filter if column exists
-      let { data: existingSeller } = await supabase
+      // Check if seller already exists (case-insensitive comparison)
+      // Fetch all sellers and compare using lowercase
+      const { data: allSellers, error: fetchError } = await supabase
         .from(TABLE_NAME)
-        .select('id, name')
-        .eq('name', trimmedSeller)
-        .eq('is_deleted', false)
-        .maybeSingle();
+        .select('id, name');
       
-      // If not found with is_deleted filter, try without it (in case column doesn't exist)
-      if (!existingSeller) {
-        const { data: foundSeller } = await supabase
-          .from(TABLE_NAME)
-          .select('id, name')
-          .eq('name', trimmedSeller)
-          .maybeSingle();
-        if (foundSeller) {
-          existingSeller = foundSeller;
-        }
+      if (fetchError) {
+        console.error("Error fetching sellers:", fetchError);
       }
+      
+      // Find existing seller using case-insensitive comparison
+      const existingSeller = allSellers?.find(
+        seller => seller.name.toLowerCase() === trimmedSeller.toLowerCase()
+      );
       
       if (existingSeller) {
         // Seller already exists, return it
+        showError(`Seller '${existingSeller.name}' already exists.`);
         return { id: existingSeller.id, name: existingSeller.name };
       }
       
@@ -106,7 +99,6 @@ export function useSellers() {
         .from(TABLE_NAME)
         .insert({ 
           name: trimmedSeller, 
-          user_id: user?.id,
           created_at: new Date().toISOString()
         })
         .select('id, name');

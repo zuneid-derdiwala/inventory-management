@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -39,12 +39,15 @@ const initialFormData: EntryData = {
 
 // IMEI validation function
 const validateIMEI = (imei: string): { isValid: boolean; error?: string } => {
-  if (!imei || imei.trim().length === 0) {
+  // Ensure imei is a string
+  const imeiStr = String(imei || '');
+  
+  if (!imeiStr || imeiStr.trim().length === 0) {
     return { isValid: false, error: "IMEI is required" };
   }
   
   // Remove spaces, dashes, and other non-digit characters for validation
-  const cleanedIMEI = imei.replace(/[\s\-]/g, '');
+  const cleanedIMEI = imeiStr.replace(/[\s\-]/g, '');
   
   // Check if it contains only digits
   if (!/^\d+$/.test(cleanedIMEI)) {
@@ -73,6 +76,7 @@ const EntryForm = () => {
   const [imeiError, setImeiError] = useState<string | undefined>(undefined);
 
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const imeiFromUrl = searchParams.get("imei");
@@ -154,6 +158,7 @@ const EntryForm = () => {
     
     const success = await addEntry(formData);
     if (success) {
+      // Success message is already shown by addEntry function
       resetForm();
     }
   };
@@ -176,7 +181,11 @@ const EntryForm = () => {
     
     const foundEntry = await searchEntry(imei);
     if (foundEntry) {
-      setFormData(foundEntry);
+      // Ensure imei is always a string
+      setFormData({
+        ...foundEntry,
+        imei: String(foundEntry.imei || ''),
+      });
       setIsUpdateDeleteEnabled(true);
       setIsDeviceInfoOpen(true);
       setIsInwardOpen(true);
@@ -185,9 +194,11 @@ const EntryForm = () => {
       } else {
         setIsOutwardOpen(false);
       }
+      showSuccess("Entry found and loaded successfully!");
     } else {
       setIsUpdateDeleteEnabled(false);
-      setFormData((prev) => ({ ...initialFormData, imei: prev.imei }));
+      setFormData((prev) => ({ ...initialFormData, imei: String(prev.imei || '') }));
+      showError("No entry found with this IMEI. You can add a new entry.");
     }
   };
 
@@ -202,14 +213,18 @@ const EntryForm = () => {
     
     const success = await updateEntry(formData);
     if (success) {
-      resetForm();
+      // Success message is already shown by updateEntry function
+      // Navigate to stock data page after successful update
+      navigate("/stock-data");
     }
   };
 
   const handleDelete = async () => {
     const success = await deleteEntry(formData.imei);
     if (success) {
-      resetForm();
+      // Success message is already shown by deleteEntry function
+      // Navigate to stock data page after successful delete
+      navigate("/stock-data");
     }
   };
 
@@ -360,7 +375,7 @@ const EntryForm = () => {
                     )}
                     {!imeiError && formData.imei && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        {formData.imei.replace(/[\s\-]/g, '').length} digits
+                        {String(formData.imei || '').replace(/[\s\-]/g, '').length} digits
                       </p>
                     )}
                   </div>
@@ -418,7 +433,7 @@ const EntryForm = () => {
                           )}
                           {!imeiError && formData.imei && (
                             <p className="text-sm text-muted-foreground mt-1">
-                              {formData.imei.replace(/[\s\-]/g, '').length} digits
+                              {String(formData.imei || '').replace(/[\s\-]/g, '').length} digits
                             </p>
                           )}
                           <Button
@@ -660,27 +675,36 @@ const EntryForm = () => {
 
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-2 mt-6 justify-end">
-            <Button onClick={handleAddEntry}>ADD</Button>
-            <Button variant="outline" onClick={resetForm}>RESET</Button>
-            <Button onClick={() => handleSearch()}>SEARCH</Button>
-            <Button onClick={handleUpdate} disabled={!isUpdateDeleteEnabled}>UPDATE</Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={!isUpdateDeleteEnabled}>DELETE</Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete the entry.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            {!isUpdateDeleteEnabled ? (
+              // Show ADD, RESET, SEARCH when not editing
+              <>
+                <Button onClick={handleAddEntry}>ADD</Button>
+                <Button variant="outline" onClick={resetForm}>RESET</Button>
+                <Button onClick={() => handleSearch()}>SEARCH</Button>
+              </>
+            ) : (
+              // Show only UPDATE and DELETE when editing
+              <>
+                <Button onClick={handleUpdate}>UPDATE</Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive">DELETE</Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete the entry.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>

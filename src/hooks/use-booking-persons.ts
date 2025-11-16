@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { showError, showSuccess } from "@/utils/toast";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/context/AuthContext";
 
 const TABLE_NAME = "booking_persons";
 
@@ -16,7 +15,6 @@ export function useBookingPersons() {
   const [availableBookingPersons, setAvailableBookingPersons] = useState<BookingPerson[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetched, setHasFetched] = useState(false);
-  const { user } = useAuth();
 
   const fetchBookingPersons = useCallback(async () => {
     setIsLoading(true);
@@ -75,29 +73,24 @@ export function useBookingPersons() {
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
-      // Check if booking person already exists (unique constraint is on name only, not (name, user_id))
-      // First try with is_deleted filter if column exists
-      let { data: existingPerson } = await supabase
+      // Check if booking person already exists (case-insensitive comparison)
+      // Fetch all booking persons and compare using lowercase
+      const { data: allBookingPersons, error: fetchError } = await supabase
         .from(TABLE_NAME)
-        .select('id, name')
-        .eq('name', trimmedPerson)
-        .eq('is_deleted', false)
-        .maybeSingle();
+        .select('id, name');
       
-      // If not found with is_deleted filter, try without it (in case column doesn't exist)
-      if (!existingPerson) {
-        const { data: foundPerson } = await supabase
-          .from(TABLE_NAME)
-          .select('id, name')
-          .eq('name', trimmedPerson)
-          .maybeSingle();
-        if (foundPerson) {
-          existingPerson = foundPerson;
-        }
+      if (fetchError) {
+        console.error("Error fetching booking persons:", fetchError);
       }
+      
+      // Find existing booking person using case-insensitive comparison
+      const existingPerson = allBookingPersons?.find(
+        person => person.name.toLowerCase() === trimmedPerson.toLowerCase()
+      );
       
       if (existingPerson) {
         // Booking person already exists, return it
+        showError(`Booking person '${existingPerson.name}' already exists.`);
         return { id: existingPerson.id, name: existingPerson.name };
       }
       
@@ -106,7 +99,6 @@ export function useBookingPersons() {
         .from(TABLE_NAME)
         .insert({ 
           name: trimmedPerson, 
-          user_id: user?.id,
           created_at: new Date().toISOString()
         })
         .select('id, name');

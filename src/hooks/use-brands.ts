@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { showError, showSuccess } from "@/utils/toast";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/context/AuthContext";
 
 const TABLE_NAME = "brands";
 
@@ -16,7 +15,6 @@ export function useBrands() {
   const [availableBrands, setAvailableBrands] = useState<Brand[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetched, setHasFetched] = useState(false);
-  const { user } = useAuth();
 
   const fetchBrands = useCallback(async () => {
     setIsLoading(true);
@@ -103,29 +101,24 @@ export function useBrands() {
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
-      // Check if brand already exists (unique constraint is on name only, not (name, user_id))
-      // First try with is_deleted filter if column exists
-      let { data: existingBrand } = await supabase
+      // Check if brand already exists (case-insensitive comparison)
+      // Fetch all brands and compare using lowercase
+      const { data: allBrands, error: fetchError } = await supabase
         .from(TABLE_NAME)
-        .select('id, name')
-        .eq('name', trimmedBrand)
-        .eq('is_deleted', false)
-        .maybeSingle();
+        .select('id, name');
       
-      // If not found with is_deleted filter, try without it (in case column doesn't exist)
-      if (!existingBrand) {
-        const { data: foundBrand } = await supabase
-          .from(TABLE_NAME)
-          .select('id, name')
-          .eq('name', trimmedBrand)
-          .maybeSingle();
-        if (foundBrand) {
-          existingBrand = foundBrand;
-        }
+      if (fetchError) {
+        console.error("Error fetching brands:", fetchError);
       }
+      
+      // Find existing brand using case-insensitive comparison
+      const existingBrand = allBrands?.find(
+        brand => brand.name.toLowerCase() === trimmedBrand.toLowerCase()
+      );
       
       if (existingBrand) {
         // Brand already exists, return it
+        showError(`Brand '${existingBrand.name}' already exists.`);
         return { id: existingBrand.id, name: existingBrand.name };
       }
       
@@ -134,7 +127,6 @@ export function useBrands() {
         .from(TABLE_NAME)
         .insert({ 
           name: trimmedBrand, 
-          user_id: user?.id,
           created_at: new Date().toISOString()
         })
         .select('id, name');

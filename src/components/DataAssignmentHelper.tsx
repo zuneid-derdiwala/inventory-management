@@ -67,24 +67,13 @@ const DataAssignmentHelper = () => {
 
   const checkUnassignedData = async () => {
     try {
-      // Check for data without user_id
-      const [brandsRes, sellersRes, modelsRes, bookingPersonsRes, entriesRes] = await Promise.all([
-        supabase.from("brands").select("count", { count: "exact" }).is("user_id", null),
-        supabase.from("sellers").select("count", { count: "exact" }).is("user_id", null),
-        supabase.from("models").select("count", { count: "exact" }).is("user_id", null),
-        supabase.from("booking_persons").select("count", { count: "exact" }).is("user_id", null),
-        supabase.from("entries").select("count", { count: "exact" }).is("user_id", null)
-      ]);
+      // Check for entries without user_id (brands, models, sellers, booking_persons no longer have user_id)
+      const entriesRes = await supabase.from("entries").select("count", { count: "exact" }).is("user_id", null);
 
-      const unassignedCount = 
-        (brandsRes.count || 0) + 
-        (sellersRes.count || 0) + 
-        (modelsRes.count || 0) + 
-        (bookingPersonsRes.count || 0) + 
-        (entriesRes.count || 0);
+      const unassignedCount = entriesRes.count || 0;
 
       if (unassignedCount > 0) {
-        showSuccess(`Found ${unassignedCount} unassigned records. You can assign them to your account.`);
+        showSuccess(`Found ${unassignedCount} unassigned entry records. You can assign them to your account.`);
       } else {
         showError("No unassigned data found. All data may already be assigned to users.");
       }

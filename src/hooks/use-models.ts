@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { showError, showSuccess } from "@/utils/toast";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/context/AuthContext";
 
 const TABLE_NAME = "models";
 
@@ -18,7 +17,6 @@ export function useModels() {
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetched, setHasFetched] = useState(false);
-  const { user } = useAuth();
 
   const fetchModels = useCallback(async () => {
     console.log("fetchModels called - starting fetch...");
@@ -177,17 +175,25 @@ export function useModels() {
       
       const brandName = brandData?.name || '';
       
-      // Check if model already exists (search without user_id constraint)
-      const { data: existingModel } = await supabase
+      // Check if model already exists (case-insensitive comparison)
+      // Fetch all models for this brand and compare using lowercase
+      const { data: allModels, error: fetchError } = await supabase
         .from(TABLE_NAME)
         .select('id, name, brand_id, brand_name')
-        .eq('brand_id', brandId)
-        .eq('name', trimmedModel)
-        .eq('is_deleted', false)
-        .maybeSingle();
+        .eq('brand_id', brandId);
+      
+      if (fetchError) {
+        console.error("Error fetching models:", fetchError);
+      }
+      
+      // Find existing model using case-insensitive comparison
+      const existingModel = allModels?.find(
+        model => model.name.toLowerCase() === trimmedModel.toLowerCase()
+      );
       
       if (existingModel) {
         // Model already exists, return it
+        showError(`Model '${existingModel.name}' already exists for brand '${brandName}'.`);
         return {
           id: existingModel.id,
           name: existingModel.name,
@@ -203,7 +209,6 @@ export function useModels() {
           brand_id: brandId, 
           brand_name: brandName, // Populate brand_name from brands table
           name: trimmedModel, 
-          user_id: user?.id,
           created_at: new Date().toISOString()
         })
         .select('id, name, brand_id, brand_name');

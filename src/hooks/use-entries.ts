@@ -603,7 +603,7 @@ export function useEntries({
       localStorage.setItem("entries", JSON.stringify(updatedDatabase));
     }
     
-    showSuccess("Data deleted!");
+    showSuccess("Data deleted successfully!");
     return true;
   };
 
