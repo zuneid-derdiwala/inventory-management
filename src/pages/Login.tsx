@@ -47,16 +47,28 @@ const Login = () => {
     if (result.success) {
       navigate("/");
     } else {
-      setError(result.error || "Login failed");
-      
       // Check if the error is about email verification
-      if (result.error?.toLowerCase().includes("verify") || 
-          result.error?.toLowerCase().includes("verification") ||
-          result.error?.toLowerCase().includes("email")) {
+      const isVerificationError = result.error?.toLowerCase().includes("verify") || 
+                                  result.error?.toLowerCase().includes("verification") ||
+                                  (result.error?.toLowerCase().includes("email") && 
+                                   result.error?.toLowerCase().includes("before signing in"));
+      
+      if (isVerificationError) {
+        // Show verification alert instead of generic error
         setShowVerificationAlert(true);
-        // Try to extract email from the input
-        const email = usernameOrEmail.includes('@') ? usernameOrEmail : '';
-        setUserEmail(email);
+        setVerificationMessage(result.error || "Please verify your email address before signing in.");
+        
+        // Use the email from the result if available, otherwise extract from input
+        if (result.email) {
+          setUserEmail(result.email);
+        } else if (usernameOrEmail.includes('@')) {
+          setUserEmail(usernameOrEmail.trim());
+        } else {
+          setUserEmail(""); // Will prompt user to enter email
+        }
+      } else {
+        // Show regular error for other login failures
+        setError(result.error || "Login failed");
       }
     }
     

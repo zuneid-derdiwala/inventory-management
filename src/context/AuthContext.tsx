@@ -13,7 +13,7 @@ interface AuthContextType {
   isAdmin: boolean;
   userRole: string | null;
   signUp: (email: string, password: string, username: string) => Promise<{ success: boolean; error?: string }>;
-  signIn: (usernameOrEmail: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signIn: (usernameOrEmail: string, password: string) => Promise<{ success: boolean; error?: string; email?: string }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   resendVerificationEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
@@ -537,7 +537,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signIn = async (usernameOrEmail: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const signIn = async (usernameOrEmail: string, password: string): Promise<{ success: boolean; error?: string; email?: string }> => {
     try {
       setLoading(true);
       
@@ -611,8 +611,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (error) {
-        // Provide more user-friendly error messages
-        if (error.message.includes('Invalid login credentials') || error.message.includes('Email not confirmed')) {
+        // Check if the error is about email verification
+        if (error.message.includes('Email not confirmed') || 
+            error.message.toLowerCase().includes('email not confirmed') ||
+            error.message.toLowerCase().includes('email verification')) {
+          return { 
+            success: false, 
+            error: "Please verify your email address before signing in. Check your inbox for the verification link.",
+            email: email // Return the email so Login component can use it for resending verification
+          };
+        }
+        
+        // Provide more user-friendly error messages for other errors
+        if (error.message.includes('Invalid login credentials')) {
           if (!isEmail) {
             return { success: false, error: "Invalid username or password. Please check your credentials." };
           }
@@ -627,7 +638,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await supabase.auth.signOut();
         return { 
           success: false, 
-          error: "Please verify your email address before signing in. Check your inbox for the verification link." 
+          error: "Please verify your email address before signing in. Check your inbox for the verification link.",
+          email: email // Return the email so Login component can use it for resending verification
         };
       }
 
