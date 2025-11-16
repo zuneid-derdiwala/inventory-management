@@ -10,10 +10,38 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Settings, User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 const Index = () => {
   const { isLoadingData } = useData();
   const { user } = useAuth();
+  const navigate = useNavigate();
+
+  // Check for password recovery session and redirect
+  useEffect(() => {
+    // Check for password recovery hash fragments
+    const hash = window.location.hash;
+    if (hash) {
+      const hashParams = new URLSearchParams(hash.substring(1));
+      const type = hashParams.get("type");
+      if (type === "recovery") {
+        console.log("Index - Password recovery detected, redirecting to reset-password");
+        navigate(`/reset-password${hash}`, { replace: true });
+        return;
+      }
+    }
+    
+    // Check if user has unverified email and might be password recovery
+    if (user && !user.email_confirmed_at) {
+      const hash = window.location.hash;
+      const hashParams = hash ? new URLSearchParams(hash.substring(1)) : null;
+      if (hashParams?.get("type") === "recovery") {
+        console.log("Index - Unverified user with recovery hash, redirecting to reset-password");
+        navigate(`/reset-password${hash}`, { replace: true });
+        return;
+      }
+    }
+  }, [user, navigate]);
 
   // Track page navigation
   useEffect(() => {

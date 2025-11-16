@@ -21,6 +21,7 @@ import { DataProvider } from "@/context/DataContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import PasswordResetRedirect from "./components/PasswordResetRedirect";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ const App = () => (
         <BrowserRouter>
           <AuthProvider>
             <DataProvider>
+              <PasswordResetRedirect />
               <Routes>
               {/* Public routes */}
               <Route path="/login" element={<Login />} />

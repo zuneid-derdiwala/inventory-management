@@ -180,19 +180,55 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []); // No dependencies needed since we use refs
 
   useEffect(() => {
+    // Check if this is a password recovery session on initial load
+    const checkPasswordRecovery = async () => {
+      // Check for hash fragments indicating password recovery
+      const hash = window.location.hash;
+      if (hash) {
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const type = hashParams.get("type");
+        if (type === "recovery") {
+          console.log("Password recovery detected in hash on initial load");
+          // Redirect to reset password page
+          window.location.href = `/reset-password${hash}`;
+          return;
+        }
+      }
+      
+      // Also check if we have a session but we're on homepage - might be password recovery
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user && window.location.pathname === "/" && !session.user.email_confirmed_at) {
+        // Check if this might be a password recovery session
+        // Password recovery sessions are temporary and unverified
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        if (hashParams.get("type") === "recovery" || session.user.recovery_sent_at) {
+          console.log("Password recovery session detected, redirecting to reset-password");
+          window.location.href = `/reset-password${window.location.hash || ""}`;
+          return;
+        }
+      }
+    };
+    
+    checkPasswordRecovery();
+
     // Get initial session
     const getInitialSession = async () => {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error) {
         console.error("Error getting session:", error);
       } else {
+        // Check if this is a password recovery session
+        const hash = window.location.hash;
+        const hashParams = hash ? new URLSearchParams(hash.substring(1)) : null;
+        const isPasswordRecovery = hashParams?.get("type") === "recovery";
+        const currentPath = window.location.pathname;
+        
         // IMPORTANT: Check if email is verified before setting the session
-        if (session?.user && !session.user.email_confirmed_at) {
-          const currentPath = window.location.pathname;
-          
+        // BUT allow password recovery sessions (they are temporary and unverified)
+        if (session?.user && !session.user.email_confirmed_at && !isPasswordRecovery) {
           // Only allow unverified users on signup or verification pages
           // Sign them out if they're trying to access other pages (including login)
-          if (currentPath !== '/verify-email' && currentPath !== '/signup') {
+          if (currentPath !== '/verify-email' && currentPath !== '/signup' && currentPath !== '/reset-password') {
             console.log("Signing out unverified user on initial load - email not confirmed");
             await supabase.auth.signOut();
             setSession(null);
@@ -204,24 +240,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             return;
           }
         }
+        
+        // If password recovery and on homepage, redirect to reset-password
+        if (isPasswordRecovery && currentPath === "/") {
+          console.log("Password recovery detected, redirecting to reset-password");
+          window.location.href = `/reset-password${hash}`;
+          return;
+        }
 
-        // Only set session if email is verified (or user is on signup/verification pages)
-        if (session?.user && !session.user.email_confirmed_at) {
+        // Only set session if email is verified (or user is on signup/verification/reset-password pages)
+        // Allow password recovery sessions (they are temporary)
+        if (session?.user && !session.user.email_confirmed_at && !isPasswordRecovery) {
           const currentPath = window.location.pathname;
-          // Don't set session for unverified users unless on signup/verification pages
-          if (currentPath !== '/verify-email' && currentPath !== '/signup') {
+          // Don't set session for unverified users unless on signup/verification/reset-password pages
+          if (currentPath !== '/verify-email' && currentPath !== '/signup' && currentPath !== '/reset-password') {
             setLoading(false);
             return;
           }
         }
 
+        // Set session (including password recovery sessions)
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
-          // Only proceed if email is verified
-          if (!session.user.email_confirmed_at) {
+          // Only proceed if email is verified OR it's a password recovery session
+          if (!session.user.email_confirmed_at && !isPasswordRecovery) {
             const currentPath = window.location.pathname;
-            if (currentPath !== '/verify-email' && currentPath !== '/signup') {
+            if (currentPath !== '/verify-email' && currentPath !== '/signup' && currentPath !== '/reset-password') {
               setLoading(false);
               return;
             }
@@ -262,6 +307,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const currentPath = window.location.pathname;
         const isVerificationPage = currentPath === '/verify-email';
         const isSignupPage = currentPath === '/signup';
+        const isResetPasswordPage = currentPath === '/reset-password';
+        
+        // Handle password recovery event - allow session for password reset
+        if (event === 'PASSWORD_RECOVERY' && session?.user) {
+          console.log("Password recovery event detected");
+          // Allow session to be set for password recovery
+          setSession(session);
+          setUser(session.user);
+          setLoading(false);
+          // Redirect to reset password page if not already there
+          if (!isResetPasswordPage) {
+            window.location.href = `/reset-password${window.location.hash}`;
+          }
+          return;
+        }
         
         // During email verification, allow the session to be set even if not verified yet
         // The verification page will handle the verification process
@@ -284,11 +344,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         
         // IMPORTANT: Check if email is verified before setting the session
-        // Always sign out users with unverified emails (except during email verification flow)
+        // Always sign out users with unverified emails (except during email verification flow and password recovery)
         if (session?.user && !session.user.email_confirmed_at) {
-          // Only allow unverified users on signup or verification pages
+          // Only allow unverified users on signup, verification, or reset password pages
           // Sign them out if they're trying to access other pages (including login)
-          if (!isVerificationPage && !isSignupPage) {
+          if (!isVerificationPage && !isSignupPage && !isResetPasswordPage) {
             console.log("Signing out unverified user - email not confirmed");
             await supabase.auth.signOut();
             setSession(null);

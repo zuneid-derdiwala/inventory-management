@@ -19,6 +19,42 @@
         
         document.documentElement.classList.add(actualTheme);
       })();
+      
+      // Handle password reset redirect before React loads
+      (function() {
+        // Check for verify endpoint query parameters (Supabase verify endpoint)
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get("token");
+        const type = urlParams.get("type");
+        
+        // If this is a password recovery verify request, redirect to reset-password
+        if (type === "recovery" && token && window.location.pathname !== "/reset-password") {
+          console.log("Pre-React: Password recovery verify endpoint detected, redirecting to /reset-password");
+          const redirectTo = urlParams.get("redirect_to") || "";
+          const newUrl = "/reset-password?token=" + encodeURIComponent(token) + "&type=recovery" + (redirectTo ? "&redirect_to=" + encodeURIComponent(redirectTo) : "");
+          window.location.href = newUrl;
+          return;
+        }
+        
+        // Check for hash fragments (after Supabase processes verify endpoint)
+        const hash = window.location.hash;
+        if (hash) {
+          try {
+            const hashParams = new URLSearchParams(hash.substring(1));
+            const hashType = hashParams.get("type");
+            const accessToken = hashParams.get("access_token");
+            const refreshToken = hashParams.get("refresh_token");
+            
+            // If we have password recovery tokens and we're not already on reset-password page
+            if (hashType === "recovery" && accessToken && refreshToken && window.location.pathname !== "/reset-password") {
+              console.log("Pre-React redirect: Password reset hash detected, redirecting to /reset-password");
+              window.location.href = "/reset-password" + hash;
+            }
+          } catch (e) {
+            console.error("Error parsing hash for password reset:", e);
+          }
+        }
+      })();
     </script>
   </head>
 
