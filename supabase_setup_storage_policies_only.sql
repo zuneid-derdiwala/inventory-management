@@ -1,9 +1,8 @@
--- Setup Supabase Storage for avatars
--- This script creates the avatars bucket and sets up proper policies
--- Note: RLS is already enabled on storage.objects by default in Supabase
+-- Setup Storage Policies for avatars bucket
+-- Use this script if you've already created the 'avatars' bucket manually in Supabase Dashboard
+-- This script only creates the policies and handles permission errors gracefully
 
 -- Drop existing policies for avatars bucket to avoid conflicts
--- Wrapped in DO block to handle permission errors gracefully
 DO $$ 
 BEGIN
     -- Try to drop existing policies (ignore errors if they don't exist or can't be dropped)
@@ -48,28 +47,6 @@ BEGIN
     END;
 END $$;
 
--- Create avatars bucket if it doesn't exist
--- Note: If this fails due to permissions, create the bucket manually in Supabase Dashboard:
--- Storage → Create Bucket → Name: "avatars", Public: Yes, File size limit: 5MB
-DO $$
-BEGIN
-    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-    VALUES (
-        'avatars',
-        'avatars',
-        true,
-        5242880, -- 5MB limit
-        ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-    )
-    ON CONFLICT (id) DO UPDATE
-    SET 
-        public = true,
-        file_size_limit = 5242880,
-        allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'Could not create bucket via SQL. Please create it manually in Supabase Dashboard: Storage → Create Bucket → Name: "avatars"';
-END $$;
-
 -- Create policy to allow authenticated users to upload avatars
 CREATE POLICY "Authenticated users can upload avatars" ON storage.objects
 FOR INSERT TO authenticated
@@ -89,3 +66,4 @@ USING (bucket_id = 'avatars');
 CREATE POLICY "Public can view avatars" ON storage.objects
 FOR SELECT TO public
 USING (bucket_id = 'avatars');
+

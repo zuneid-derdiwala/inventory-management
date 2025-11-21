@@ -12,7 +12,7 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   userRole: string | null;
-  signUp: (email: string, password: string, username: string) => Promise<{ success: boolean; error?: string }>;
+  signUp: (email: string, password: string, username: string, mobile?: string, countryCode?: string) => Promise<{ success: boolean; error?: string }>;
   signIn: (usernameOrEmail: string, password: string) => Promise<{ success: boolean; error?: string; email?: string }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
@@ -468,7 +468,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [checkSessionTimeout]);
 
-  const signUp = async (email: string, password: string, username: string): Promise<{ success: boolean; error?: string }> => {
+  const signUp = async (email: string, password: string, username: string, mobile?: string, countryCode?: string): Promise<{ success: boolean; error?: string }> => {
     try {
       setLoading(true);
       
@@ -496,18 +496,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (data.user) {
         // The database trigger should create the profile automatically
-        // We just need to update it with the username
+        // We just need to update it with the username and mobile
         // Wait a moment for the trigger to run
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Try to update the profile with username
+        // Prepare update data
+        const updateData: any = { 
+          username: username.trim(),
+          role: 'user'
+        };
+
+        // Add mobile and country_code if provided
+        if (mobile && mobile.trim() && countryCode) {
+          updateData.mobile = mobile.trim();
+          updateData.country_code = countryCode;
+        }
+        
+        // Try to update the profile with username and mobile
         // The trigger creates it with just id and email, so we update it
         const { error: updateError } = await supabase
           .from('profiles')
-          .update({ 
-            username: username.trim(),
-            role: 'user'
-          })
+          .update(updateData)
           .eq('id', data.user.id);
 
         if (updateError) {
@@ -516,7 +525,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.log("Profile update failed, trigger should create it:", updateError.message);
           
           // Don't fail signup - the trigger will create the profile
-          // Username can be set later when user verifies email and logs in
+          // Username and mobile can be set later when user verifies email and logs in
         }
 
         // IMPORTANT: Sign out the user immediately if email is not verified

@@ -9,8 +9,67 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { showSuccess, showError, showLoading, dismissToast } from "@/utils/toast";
-import { User, Camera, Save, ArrowLeft } from "lucide-react";
+import { User, Camera, Save, ArrowLeft, Phone, Check, ChevronsUpDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+
+// Common country codes for mobile numbers
+const COUNTRY_CODES = [
+  { code: "+1", country: "US/Canada" },
+  { code: "+44", country: "UK" },
+  { code: "+91", country: "India" },
+  { code: "+86", country: "China" },
+  { code: "+81", country: "Japan" },
+  { code: "+49", country: "Germany" },
+  { code: "+33", country: "France" },
+  { code: "+39", country: "Italy" },
+  { code: "+34", country: "Spain" },
+  { code: "+61", country: "Australia" },
+  { code: "+27", country: "South Africa" },
+  { code: "+55", country: "Brazil" },
+  { code: "+52", country: "Mexico" },
+  { code: "+92", country: "Pakistan" },
+  { code: "+971", country: "UAE" },
+  { code: "+966", country: "Saudi Arabia" },
+  { code: "+65", country: "Singapore" },
+  { code: "+60", country: "Malaysia" },
+  { code: "+62", country: "Indonesia" },
+  { code: "+84", country: "Vietnam" },
+  { code: "+66", country: "Thailand" },
+  { code: "+63", country: "Philippines" },
+  { code: "+82", country: "South Korea" },
+  { code: "+7", country: "Russia/Kazakhstan" },
+  { code: "+90", country: "Turkey" },
+  { code: "+20", country: "Egypt" },
+  { code: "+234", country: "Nigeria" },
+  { code: "+254", country: "Kenya" },
+  { code: "+212", country: "Morocco" },
+  { code: "+351", country: "Portugal" },
+  { code: "+31", country: "Netherlands" },
+  { code: "+32", country: "Belgium" },
+  { code: "+41", country: "Switzerland" },
+  { code: "+46", country: "Sweden" },
+  { code: "+47", country: "Norway" },
+  { code: "+45", country: "Denmark" },
+  { code: "+358", country: "Finland" },
+  { code: "+48", country: "Poland" },
+  { code: "+36", country: "Hungary" },
+  { code: "+40", country: "Romania" },
+  { code: "+30", country: "Greece" },
+];
 
 const ProfileSettings = () => {
   const { user } = useAuth();
@@ -18,6 +77,9 @@ const ProfileSettings = () => {
   const [username, setUsername] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [avatarUrl, setAvatarUrl] = useState<string>("");
+  const [mobile, setMobile] = useState<string>("");
+  const [countryCode, setCountryCode] = useState<string>("+1");
+  const [countryCodeOpen, setCountryCodeOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -28,32 +90,51 @@ const ProfileSettings = () => {
       if (user?.id) {
         setIsLoading(true);
         try {
-          // First try to get username and avatar_url
+          // Try to get username, avatar_url, mobile, and country_code
           const { data, error } = await supabase
             .from('profiles')
-            .select('username, avatar_url')
+            .select('username, avatar_url, mobile, country_code')
             .eq('id', user.id)
             .maybeSingle();
 
           if (error) {
             console.error('Error fetching profile:', error);
-            // If avatar_url column doesn't exist, try just username
+            // If some columns don't exist, try with fewer fields
             const { data: usernameData, error: usernameError } = await supabase
               .from('profiles')
-              .select('username')
+              .select('username, mobile, country_code')
               .eq('id', user.id)
               .maybeSingle();
 
             if (usernameError) {
               console.error('Error fetching username:', usernameError);
-              showError('Failed to load profile data. Please run the database setup script.');
+              // Last resort: try just username
+              const { data: basicData, error: basicError } = await supabase
+                .from('profiles')
+                .select('username')
+                .eq('id', user.id)
+                .maybeSingle();
+
+              if (basicError) {
+                console.error('Error fetching basic profile:', basicError);
+                showError('Failed to load profile data. Please run the database setup script.');
+              } else {
+                setUsername(basicData?.username || '');
+                setAvatarUrl('');
+                setMobile('');
+                setCountryCode('+1');
+              }
             } else {
               setUsername(usernameData?.username || '');
-              setAvatarUrl(''); // No avatar_url column available
+              setAvatarUrl('');
+              setMobile(usernameData?.mobile || '');
+              setCountryCode(usernameData?.country_code || '+1');
             }
           } else {
             setUsername(data?.username || '');
             setAvatarUrl(data?.avatar_url || '');
+            setMobile(data?.mobile || '');
+            setCountryCode(data?.country_code || '+1');
           }
         } catch (error) {
           console.error('Error fetching profile:', error);
@@ -73,6 +154,17 @@ const ProfileSettings = () => {
 
   const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUsername(e.target.value);
+  };
+
+  const handleMobileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Only allow digits
+    const value = e.target.value.replace(/\D/g, '');
+    setMobile(value);
+  };
+
+  const formatMobileNumber = (mobile: string, countryCode: string): string => {
+    if (!mobile) return '';
+    return `${countryCode}${mobile}`;
   };
 
   const handleSaveProfile = async () => {
@@ -110,6 +202,11 @@ const ProfileSettings = () => {
           updateData.avatar_url = avatarUrl;
         }
 
+        // Always include mobile and country_code in update (even if empty, to clear them)
+        // This ensures mobile number can always be updated or cleared
+        updateData.mobile = mobile.trim() || null;
+        updateData.country_code = mobile.trim() ? countryCode : null;
+
         const updateResponse = await supabase
           .from('profiles')
           .update(updateData)
@@ -129,6 +226,16 @@ const ProfileSettings = () => {
           insertData.avatar_url = avatarUrl;
         }
 
+        // Include mobile and country_code if mobile is provided
+        if (mobile.trim()) {
+          insertData.mobile = mobile.trim();
+          insertData.country_code = countryCode;
+        } else {
+          // Set to null if not provided (allows clearing later)
+          insertData.mobile = null;
+          insertData.country_code = null;
+        }
+
         const insertResponse = await supabase
           .from('profiles')
           .insert(insertData);
@@ -144,6 +251,34 @@ const ProfileSettings = () => {
           showError('Username already exists. Please choose a different username.');
         } else if (error.code === '42501') {
           showError('Permission denied. Please run "supabase_fix_profiles_rls.sql" in your Supabase SQL Editor to fix RLS policies.');
+        } else if (error.message?.includes('mobile') || error.message?.includes('country_code')) {
+          // If mobile/country_code columns don't exist, try without them
+          if (existingProfile) {
+            let fallbackData: any = {
+              username: username.trim(),
+            };
+            if (avatarUrl) {
+              fallbackData.avatar_url = avatarUrl;
+            }
+            const { error: fallbackError } = await supabase
+              .from('profiles')
+              .update(fallbackData)
+              .eq('id', user.id);
+
+            if (fallbackError) {
+              if (fallbackError.code === '23505') {
+                showError('Username already exists. Please choose a different username.');
+              } else {
+                showError('Failed to update profile. Please run "supabase_add_mobile_to_profiles.sql" to add mobile number support.');
+              }
+            } else {
+              showSuccess('Profile updated successfully! (Mobile number not available - please run database setup)');
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
+            }
+          }
+          return;
         } else if (error.message?.includes('avatar_url')) {
           // If avatar_url column doesn't exist, try without it
           if (existingProfile) {
@@ -227,12 +362,14 @@ const ProfileSettings = () => {
       // Create a unique filename
       const fileExt = file.name.split('.').pop();
       const fileName = `${user?.id}-${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      const filePath = fileName;
 
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          upsert: true // Replace existing file if user uploads again
+        });
 
       if (uploadError) {
         console.error('Error uploading avatar:', uploadError);
@@ -376,6 +513,81 @@ const ProfileSettings = () => {
               />
               <p className="text-xs text-muted-foreground">
                 This will be displayed in the welcome message and can be used for login
+              </p>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="mobile" className="flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                Mobile Number
+              </Label>
+              <div className="flex gap-2">
+                <Popover open={countryCodeOpen} onOpenChange={setCountryCodeOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={countryCodeOpen}
+                      className="w-[180px] justify-between"
+                      disabled={isSaving}
+                    >
+                      {countryCode
+                        ? `${countryCode} (${COUNTRY_CODES.find((item) => item.code === countryCode)?.country || ""})`
+                        : "Select country..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-0">
+                    <Command>
+                      <CommandInput placeholder="Search country or code..." />
+                      <CommandList>
+                        <CommandEmpty>No country found.</CommandEmpty>
+                        <CommandGroup>
+                          {COUNTRY_CODES.map((item) => (
+                            <CommandItem
+                              key={item.code}
+                              value={`${item.code} ${item.country}`}
+                              onSelect={() => {
+                                setCountryCode(item.code);
+                                setCountryCodeOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  countryCode === item.code
+                                    ? "opacity-100"
+                                    : "opacity-0"
+                                )}
+                              />
+                              <span className="font-medium">{item.code}</span>
+                              <span className="ml-2 text-muted-foreground">
+                                {item.country}
+                              </span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <Input
+                  id="mobile"
+                  type="tel"
+                  value={mobile}
+                  onChange={handleMobileChange}
+                  placeholder="1234567890"
+                  disabled={isSaving}
+                  className="flex-1"
+                />
+              </div>
+              {mobile && (
+                <p className="text-xs text-muted-foreground">
+                  Full number: {formatMobileNumber(mobile, countryCode)}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Enter your mobile number (digits only, without country code)
               </p>
             </div>
           </div>
