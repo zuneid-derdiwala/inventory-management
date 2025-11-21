@@ -101,24 +101,50 @@ export function useBrands() {
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
-      // Check if brand already exists (case-insensitive comparison)
-      // Fetch all brands and compare using lowercase
+      // First, fetch all brands (including deleted) to check for case-insensitive matches
       const { data: allBrands, error: fetchError } = await supabase
         .from(TABLE_NAME)
-        .select('id, name');
+        .select('id, name, is_deleted');
       
       if (fetchError) {
         console.error("Error fetching brands:", fetchError);
       }
       
-      // Find existing brand using case-insensitive comparison
+      // Find deleted brand using case-insensitive comparison
+      const deletedBrand = allBrands?.find(
+        b => b.name.toLowerCase() === trimmedBrand.toLowerCase() && b.is_deleted === true
+      );
+      
+      if (deletedBrand) {
+        // Restore the deleted brand
+        const { data: restoredBrand, error: restoreError } = await supabase
+          .from(TABLE_NAME)
+          .update({ is_deleted: false })
+          .eq('id', deletedBrand.id)
+          .select('id, name')
+          .single();
+        
+        if (restoreError) {
+          console.error("Error restoring brand:", restoreError);
+          showError("Failed to restore brand.");
+          return null;
+        }
+        
+        if (restoredBrand) {
+          // Refresh the list
+          await fetchBrands();
+          showSuccess(`Brand '${restoredBrand.name}' restored.`);
+          return { id: restoredBrand.id, name: restoredBrand.name };
+        }
+      }
+      
+      // Check if brand already exists (non-deleted, case-insensitive comparison)
       const existingBrand = allBrands?.find(
-        brand => brand.name.toLowerCase() === trimmedBrand.toLowerCase()
+        b => b.name.toLowerCase() === trimmedBrand.toLowerCase() && b.is_deleted === false
       );
       
       if (existingBrand) {
-        // Brand already exists, return it
-        showError(`Brand '${existingBrand.name}' already exists.`);
+        // Brand already exists, return it (don't show error, just return it)
         return { id: existingBrand.id, name: existingBrand.name };
       }
       
@@ -127,55 +153,57 @@ export function useBrands() {
         .from(TABLE_NAME)
         .insert({ 
           name: trimmedBrand, 
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          is_deleted: false
         })
         .select('id, name');
 
       if (upsertError) {
-        // If error is duplicate key (409 or 23505), try to find the existing brand
-        // Check for duplicate key errors (23505) or conflict errors
+        // If error is duplicate key, check for deleted entry to restore (case-insensitive)
         const isDuplicateError = upsertError.code === '23505' || 
                                  upsertError.code === 'PGRST116' || 
                                  upsertError.message?.includes('duplicate key') ||
                                  upsertError.message?.includes('already exists');
         
         if (isDuplicateError) {
-          // Try to find the brand (unique constraint is on name only)
-          const { data: foundBrand } = await supabase
+          // Fetch all brands to find case-insensitive match
+          const { data: allBrandsCheck } = await supabase
             .from(TABLE_NAME)
-            .select('id, name')
-            .eq('name', trimmedBrand)
-            .eq('is_deleted', false)
-            .maybeSingle();
+            .select('id, name, is_deleted');
           
-          if (foundBrand) {
-            // Brand exists, return it
-            return { id: foundBrand.id, name: foundBrand.name };
+          // Find deleted brand (case-insensitive)
+          const deletedBrandCheck = allBrandsCheck?.find(
+            b => b.name.toLowerCase() === trimmedBrand.toLowerCase() && b.is_deleted === true
+          );
+          
+          if (deletedBrandCheck) {
+            // Restore it
+            const { data: restored } = await supabase
+              .from(TABLE_NAME)
+              .update({ is_deleted: false })
+              .eq('id', deletedBrandCheck.id)
+              .select('id, name')
+              .single();
+            
+            if (restored) {
+              await fetchBrands();
+              showSuccess(`Brand '${restored.name}' restored.`);
+              return { id: restored.id, name: restored.name };
+            }
           }
           
-          // If not found with is_deleted filter, try without it (in case column doesn't exist)
-          const { data: foundBrand2 } = await supabase
-            .from(TABLE_NAME)
-            .select('id, name')
-            .eq('name', trimmedBrand)
-            .maybeSingle();
+          // Find existing non-deleted brand (case-insensitive)
+          const existingBrandCheck = allBrandsCheck?.find(
+            b => b.name.toLowerCase() === trimmedBrand.toLowerCase() && b.is_deleted === false
+          );
           
-          if (foundBrand2) {
-            return { id: foundBrand2.id, name: foundBrand2.name };
+          if (existingBrandCheck) {
+            return { id: existingBrandCheck.id, name: existingBrandCheck.name };
           }
         }
-        // For other errors, log but don't show error to user (might be duplicate during bulk import)
-        console.warn(`Supabase Error adding brand '${trimmedBrand}':`, upsertError);
-        // Try one more time to find existing brand
-        const { data: foundBrand } = await supabase
-          .from(TABLE_NAME)
-          .select('id, name')
-          .eq('name', trimmedBrand)
-          .maybeSingle();
         
-        if (foundBrand) {
-          return { id: foundBrand.id, name: foundBrand.name };
-        }
+        console.warn(`Supabase Error adding brand '${trimmedBrand}':`, upsertError);
+        showError(`Failed to add brand: ${upsertError.message || 'Unknown error'}`);
         return null;
       }
 

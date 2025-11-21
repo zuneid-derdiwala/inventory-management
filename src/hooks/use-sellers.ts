@@ -73,24 +73,50 @@ export function useSellers() {
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
-      // Check if seller already exists (case-insensitive comparison)
-      // Fetch all sellers and compare using lowercase
+      // First, fetch all sellers (including deleted) to check for case-insensitive matches
       const { data: allSellers, error: fetchError } = await supabase
         .from(TABLE_NAME)
-        .select('id, name');
+        .select('id, name, is_deleted');
       
       if (fetchError) {
         console.error("Error fetching sellers:", fetchError);
       }
       
-      // Find existing seller using case-insensitive comparison
+      // Find deleted seller using case-insensitive comparison
+      const deletedSeller = allSellers?.find(
+        s => s.name.toLowerCase() === trimmedSeller.toLowerCase() && s.is_deleted === true
+      );
+      
+      if (deletedSeller) {
+        // Restore the deleted seller
+        const { data: restoredSeller, error: restoreError } = await supabase
+          .from(TABLE_NAME)
+          .update({ is_deleted: false })
+          .eq('id', deletedSeller.id)
+          .select('id, name')
+          .single();
+        
+        if (restoreError) {
+          console.error("Error restoring seller:", restoreError);
+          showError("Failed to restore seller.");
+          return null;
+        }
+        
+        if (restoredSeller) {
+          // Refresh the list
+          await fetchSellers();
+          showSuccess(`Seller '${restoredSeller.name}' restored.`);
+          return { id: restoredSeller.id, name: restoredSeller.name };
+        }
+      }
+      
+      // Check if seller already exists (non-deleted, case-insensitive comparison)
       const existingSeller = allSellers?.find(
-        seller => seller.name.toLowerCase() === trimmedSeller.toLowerCase()
+        s => s.name.toLowerCase() === trimmedSeller.toLowerCase() && s.is_deleted === false
       );
       
       if (existingSeller) {
-        // Seller already exists, return it
-        showError(`Seller '${existingSeller.name}' already exists.`);
+        // Seller already exists, return it (don't show error, just return it)
         return { id: existingSeller.id, name: existingSeller.name };
       }
       
@@ -99,55 +125,57 @@ export function useSellers() {
         .from(TABLE_NAME)
         .insert({ 
           name: trimmedSeller, 
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          is_deleted: false
         })
         .select('id, name');
 
       if (upsertError) {
-        // If error is duplicate key (409 or 23505), try to find the existing seller
-        // Check for duplicate key errors (23505) or conflict errors
+        // If error is duplicate key, check for deleted entry to restore (case-insensitive)
         const isDuplicateError = upsertError.code === '23505' || 
                                  upsertError.code === 'PGRST116' || 
                                  upsertError.message?.includes('duplicate key') ||
                                  upsertError.message?.includes('already exists');
         
         if (isDuplicateError) {
-          // Try to find the seller (search without user_id constraint)
-          const { data: foundSeller } = await supabase
+          // Fetch all sellers to find case-insensitive match
+          const { data: allSellersCheck } = await supabase
             .from(TABLE_NAME)
-            .select('id, name')
-            .eq('name', trimmedSeller)
-            .eq('is_deleted', false)
-            .maybeSingle();
+            .select('id, name, is_deleted');
           
-          if (foundSeller) {
-            // Seller exists, return it
-            return { id: foundSeller.id, name: foundSeller.name };
+          // Find deleted seller (case-insensitive)
+          const deletedSellerCheck = allSellersCheck?.find(
+            s => s.name.toLowerCase() === trimmedSeller.toLowerCase() && s.is_deleted === true
+          );
+          
+          if (deletedSellerCheck) {
+            // Restore it
+            const { data: restored } = await supabase
+              .from(TABLE_NAME)
+              .update({ is_deleted: false })
+              .eq('id', deletedSellerCheck.id)
+              .select('id, name')
+              .single();
+            
+            if (restored) {
+              await fetchSellers();
+              showSuccess(`Seller '${restored.name}' restored.`);
+              return { id: restored.id, name: restored.name };
+            }
           }
           
-          // If not found with is_deleted filter, try without it (in case column doesn't exist)
-          const { data: foundSeller2 } = await supabase
-            .from(TABLE_NAME)
-            .select('id, name')
-            .eq('name', trimmedSeller)
-            .maybeSingle();
+          // Find existing non-deleted seller (case-insensitive)
+          const existingSellerCheck = allSellersCheck?.find(
+            s => s.name.toLowerCase() === trimmedSeller.toLowerCase() && s.is_deleted === false
+          );
           
-          if (foundSeller2) {
-            return { id: foundSeller2.id, name: foundSeller2.name };
+          if (existingSellerCheck) {
+            return { id: existingSellerCheck.id, name: existingSellerCheck.name };
           }
         }
-        // For other errors, log but don't show error to user (might be duplicate during bulk import)
-        console.warn(`Supabase Error adding seller '${trimmedSeller}':`, upsertError);
-        // Try one more time to find existing seller
-        const { data: foundSeller } = await supabase
-          .from(TABLE_NAME)
-          .select('id, name')
-          .eq('name', trimmedSeller)
-          .maybeSingle();
         
-        if (foundSeller) {
-          return { id: foundSeller.id, name: foundSeller.name };
-        }
+        console.warn(`Supabase Error adding seller '${trimmedSeller}':`, upsertError);
+        showError(`Failed to add seller: ${upsertError.message || 'Unknown error'}`);
         return null;
       }
 

@@ -73,24 +73,50 @@ export function useBookingPersons() {
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
-      // Check if booking person already exists (case-insensitive comparison)
-      // Fetch all booking persons and compare using lowercase
+      // First, fetch all booking persons (including deleted) to check for case-insensitive matches
       const { data: allBookingPersons, error: fetchError } = await supabase
         .from(TABLE_NAME)
-        .select('id, name');
+        .select('id, name, is_deleted');
       
       if (fetchError) {
         console.error("Error fetching booking persons:", fetchError);
       }
       
-      // Find existing booking person using case-insensitive comparison
+      // Find deleted booking person using case-insensitive comparison
+      const deletedPerson = allBookingPersons?.find(
+        bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && bp.is_deleted === true
+      );
+      
+      if (deletedPerson) {
+        // Restore the deleted booking person
+        const { data: restoredPerson, error: restoreError } = await supabase
+          .from(TABLE_NAME)
+          .update({ is_deleted: false })
+          .eq('id', deletedPerson.id)
+          .select('id, name')
+          .single();
+        
+        if (restoreError) {
+          console.error("Error restoring booking person:", restoreError);
+          showError("Failed to restore booking person.");
+          return null;
+        }
+        
+        if (restoredPerson) {
+          // Refresh the list
+          await fetchBookingPersons();
+          showSuccess(`Booking person '${restoredPerson.name}' restored.`);
+          return { id: restoredPerson.id, name: restoredPerson.name };
+        }
+      }
+      
+      // Check if booking person already exists (non-deleted, case-insensitive comparison)
       const existingPerson = allBookingPersons?.find(
-        person => person.name.toLowerCase() === trimmedPerson.toLowerCase()
+        bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && bp.is_deleted === false
       );
       
       if (existingPerson) {
-        // Booking person already exists, return it
-        showError(`Booking person '${existingPerson.name}' already exists.`);
+        // Booking person already exists, return it (don't show error, just return it)
         return { id: existingPerson.id, name: existingPerson.name };
       }
       
@@ -99,55 +125,57 @@ export function useBookingPersons() {
         .from(TABLE_NAME)
         .insert({ 
           name: trimmedPerson, 
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          is_deleted: false
         })
         .select('id, name');
 
       if (upsertError) {
-        // If error is duplicate key (409 or 23505), try to find the existing booking person
-        // Check for duplicate key errors (23505) or conflict errors
+        // If error is duplicate key, check for deleted entry to restore (case-insensitive)
         const isDuplicateError = upsertError.code === '23505' || 
                                  upsertError.code === 'PGRST116' || 
                                  upsertError.message?.includes('duplicate key') ||
                                  upsertError.message?.includes('already exists');
         
         if (isDuplicateError) {
-          // Try to find the booking person (unique constraint is on name only)
-          const { data: foundPerson } = await supabase
+          // Fetch all booking persons to find case-insensitive match
+          const { data: allBookingPersonsCheck } = await supabase
             .from(TABLE_NAME)
-            .select('id, name')
-            .eq('name', trimmedPerson)
-            .eq('is_deleted', false)
-            .maybeSingle();
+            .select('id, name, is_deleted');
           
-          if (foundPerson) {
-            // Booking person exists, return it
-            return { id: foundPerson.id, name: foundPerson.name };
+          // Find deleted booking person (case-insensitive)
+          const deletedPersonCheck = allBookingPersonsCheck?.find(
+            bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && bp.is_deleted === true
+          );
+          
+          if (deletedPersonCheck) {
+            // Restore it
+            const { data: restored } = await supabase
+              .from(TABLE_NAME)
+              .update({ is_deleted: false })
+              .eq('id', deletedPersonCheck.id)
+              .select('id, name')
+              .single();
+            
+            if (restored) {
+              await fetchBookingPersons();
+              showSuccess(`Booking person '${restored.name}' restored.`);
+              return { id: restored.id, name: restored.name };
+            }
           }
           
-          // If not found with is_deleted filter, try without it (in case column doesn't exist)
-          const { data: foundPerson2 } = await supabase
-            .from(TABLE_NAME)
-            .select('id, name')
-            .eq('name', trimmedPerson)
-            .maybeSingle();
+          // Find existing non-deleted booking person (case-insensitive)
+          const existingPersonCheck = allBookingPersonsCheck?.find(
+            bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && bp.is_deleted === false
+          );
           
-          if (foundPerson2) {
-            return { id: foundPerson2.id, name: foundPerson2.name };
+          if (existingPersonCheck) {
+            return { id: existingPersonCheck.id, name: existingPersonCheck.name };
           }
         }
-        // For other errors, log but don't show error to user (might be duplicate during bulk import)
-        console.warn(`Supabase Error adding booking person '${trimmedPerson}':`, upsertError);
-        // Try one more time to find existing booking person
-        const { data: foundPerson } = await supabase
-          .from(TABLE_NAME)
-          .select('id, name')
-          .eq('name', trimmedPerson)
-          .maybeSingle();
         
-        if (foundPerson) {
-          return { id: foundPerson.id, name: foundPerson.name };
-        }
+        console.warn(`Supabase Error adding booking person '${trimmedPerson}':`, upsertError);
+        showError(`Failed to add booking person: ${upsertError.message || 'Unknown error'}`);
         return null;
       }
 

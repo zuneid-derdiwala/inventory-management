@@ -25,6 +25,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { validatePhoneNumber } from "@/utils/phoneValidation";
 
 // Common country codes for mobile numbers
 const COUNTRY_CODES = [
@@ -80,6 +81,7 @@ const ProfileSettings = () => {
   const [mobile, setMobile] = useState<string>("");
   const [countryCode, setCountryCode] = useState<string>("+1");
   const [countryCodeOpen, setCountryCodeOpen] = useState(false);
+  const [mobileError, setMobileError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -160,6 +162,37 @@ const ProfileSettings = () => {
     // Only allow digits
     const value = e.target.value.replace(/\D/g, '');
     setMobile(value);
+    
+    // Clear error when user starts typing
+    if (mobileError) {
+      setMobileError("");
+    }
+    
+    // Real-time validation if mobile number is provided
+    if (value.trim()) {
+      const phoneValidation = validatePhoneNumber(value, countryCode);
+      if (!phoneValidation.valid) {
+        setMobileError(phoneValidation.error || 'Invalid mobile number');
+      } else {
+        setMobileError("");
+      }
+    } else {
+      setMobileError("");
+    }
+  };
+
+  const handleCountryCodeChange = (newCountryCode: string) => {
+    setCountryCode(newCountryCode);
+    
+    // Re-validate mobile number when country code changes
+    if (mobile.trim()) {
+      const phoneValidation = validatePhoneNumber(mobile, newCountryCode);
+      if (!phoneValidation.valid) {
+        setMobileError(phoneValidation.error || 'Invalid mobile number');
+      } else {
+        setMobileError("");
+      }
+    }
   };
 
   const formatMobileNumber = (mobile: string, countryCode: string): string => {
@@ -176,6 +209,15 @@ const ProfileSettings = () => {
     if (!username.trim()) {
       showError('Username is required');
       return;
+    }
+
+    // Validate mobile number if provided
+    if (mobile.trim()) {
+      const phoneValidation = validatePhoneNumber(mobile, countryCode);
+      if (!phoneValidation.valid) {
+        showError(phoneValidation.error || 'Invalid mobile number');
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -548,7 +590,7 @@ const ProfileSettings = () => {
                               key={item.code}
                               value={`${item.code} ${item.country}`}
                               onSelect={() => {
-                                setCountryCode(item.code);
+                                handleCountryCodeChange(item.code);
                                 setCountryCodeOpen(false);
                               }}
                             >
@@ -578,17 +620,24 @@ const ProfileSettings = () => {
                   onChange={handleMobileChange}
                   placeholder="1234567890"
                   disabled={isSaving}
-                  className="flex-1"
+                  className={cn("flex-1", mobileError && "border-red-500 focus-visible:ring-red-500")}
                 />
               </div>
-              {mobile && (
+              {mobileError && (
+                <p className="text-xs text-red-500">
+                  {mobileError}
+                </p>
+              )}
+              {mobile && !mobileError && (
                 <p className="text-xs text-muted-foreground">
                   Full number: {formatMobileNumber(mobile, countryCode)}
                 </p>
               )}
-              <p className="text-xs text-muted-foreground">
-                Enter your mobile number (digits only, without country code)
-              </p>
+              {!mobileError && (
+                <p className="text-xs text-muted-foreground">
+                  Enter your mobile number (digits only, without country code)
+                </p>
+              )}
             </div>
           </div>
 
@@ -596,7 +645,7 @@ const ProfileSettings = () => {
           <div className="flex justify-end">
             <Button
               onClick={handleSaveProfile}
-              disabled={isSaving || !username.trim()}
+              disabled={isSaving || !username.trim() || !!mobileError}
               className="flex items-center gap-2"
             >
               {isSaving ? (
