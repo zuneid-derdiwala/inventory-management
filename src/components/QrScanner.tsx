@@ -320,6 +320,11 @@ const QrScanner: React.FC<QrScannerProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const isInitializingRef = useRef(false);
   const shouldStopProcessingRef = useRef(true); // Use ref for synchronous access
+  const isScannerActiveRef = useRef(false); // Use ref for synchronous access
+  const isInitializedRef = useRef(false); // Use ref for synchronous access
+  const ocrProcessingEnabledRef = useRef(false); // Use ref for synchronous access
+  const [ocrStatus, setOcrStatus] = useState<string>(''); // Debug: OCR status message
+  const [ocrFrameCount, setOcrFrameCount] = useState(0); // Debug: Count of frames processed
 
   // Global error suppression for DOM manipulation errors
   React.useEffect(() => {
@@ -446,7 +451,13 @@ const QrScanner: React.FC<QrScannerProps> = ({
     // Reset OCR processing flags when switching to upload mode
     setOcrProcessingEnabled(false);
     setShouldStopProcessing(true);
+    // Update refs
     shouldStopProcessingRef.current = true;
+    isScannerActiveRef.current = false;
+    isInitializedRef.current = false;
+    ocrProcessingEnabledRef.current = false;
+    setOcrStatus('');
+    setOcrFrameCount(0);
     
     // Clear any pending timeouts
     if (scanTimeout) {
@@ -777,24 +788,36 @@ const QrScanner: React.FC<QrScannerProps> = ({
       setIsScannerActive(true);
       setOcrProcessingEnabled(true);
       setShouldStopProcessing(false);
-      shouldStopProcessingRef.current = false; // Enable processing - use ref for synchronous access
+      // Update refs immediately for synchronous access
+      shouldStopProcessingRef.current = false;
+      isScannerActiveRef.current = true;
+      isInitializedRef.current = true;
+      ocrProcessingEnabledRef.current = true;
+      setOcrStatus('🔄 Camera initialized, waiting for video...');
       
       // Start OCR-based processing loop as primary method
       const processWithOCR = async () => {
         // Get current video element dynamically (in case it changed)
         const currentVideo = document.getElementById('qr-video') as HTMLVideoElement || video;
         
+        // Use refs for state checks to avoid closure issues
+        const scannerActive = isScannerActiveRef.current;
+        const initialized = isInitializedRef.current;
+        const ocrEnabled = ocrProcessingEnabledRef.current;
+        const shouldStop = shouldStopProcessingRef.current;
+        
         // Multiple comprehensive checks to prevent auto-start
-        // Get current state values dynamically
-        if (!isScannerActive || !isInitialized || emergencyStop || !currentVideo || shouldStopProcessingRef.current || !ocrProcessingEnabled) {
+        if (!scannerActive || !initialized || emergencyStop || !currentVideo || shouldStop || !ocrEnabled) {
           console.log("🛑 Scanner not properly active or processing stopped, stopping OCR processing", {
-            isScannerActive,
-            isInitialized,
+            scannerActive,
+            initialized,
             emergencyStop,
             hasVideo: !!currentVideo,
-            shouldStopProcessing: shouldStopProcessingRef.current,
-            ocrProcessingEnabled
+            shouldStop,
+            ocrEnabled,
+            stateValues: { isScannerActive, isInitialized, ocrProcessingEnabled } // Log state for comparison
           });
+          setOcrStatus(`🛑 Stopped: active=${scannerActive}, init=${initialized}, ocr=${ocrEnabled}, stop=${shouldStop}`);
           return;
         }
         
@@ -803,20 +826,23 @@ const QrScanner: React.FC<QrScannerProps> = ({
         // Check if video has valid dimensions instead
         if (currentVideo.readyState < 2) {
           console.log("🔄 Video not ready, waiting... (readyState:", currentVideo.readyState, ")");
+          setOcrStatus(`⏳ Video not ready (readyState: ${currentVideo.readyState})`);
           // On mobile, wait longer and check dimensions
           if (currentVideo.videoWidth === 0 || currentVideo.videoHeight === 0) {
-            // Only continue if scanner is still active
-            if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessingRef.current && ocrProcessingEnabled) {
+            // Only continue if scanner is still active (use refs)
+            if (isScannerActiveRef.current && isInitializedRef.current && !emergencyStop && !shouldStopProcessingRef.current && ocrProcessingEnabledRef.current) {
               setTimeout(processWithOCR, 200); // Longer wait for mobile
-            }
-            return;
+          }
+          return;
           }
           // If video has dimensions, it's probably ready even if readyState < 2
           console.log("📹 Video has dimensions, proceeding despite readyState < 2");
         }
         
         try {
-          console.log("🔬 Processing camera frame with OCR as primary method...");
+          setOcrFrameCount(prev => prev + 1);
+          console.log(`🔬 Processing camera frame #${ocrFrameCount + 1} with OCR as primary method...`);
+          setOcrStatus(`🔬 Processing frame #${ocrFrameCount + 1}...`);
           
           // Process the video frame directly with the same logic as image upload
           const canvas = document.createElement('canvas');
@@ -947,22 +973,26 @@ const QrScanner: React.FC<QrScannerProps> = ({
           
           console.log("Advanced processing did not find valid IMEI in camera frame");
           
-          // Continue processing only if scanner is still active
+          // Continue processing only if scanner is still active (use refs)
           // On mobile, process less frequently to avoid performance issues
           const browserInfo = getBrowserInfo();
           const processingInterval = browserInfo.isMobile ? 2000 : 1000; // 2 seconds on mobile, 1 second on desktop
           
-          if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessingRef.current && ocrProcessingEnabled) {
+          if (isScannerActiveRef.current && isInitializedRef.current && !emergencyStop && !shouldStopProcessingRef.current && ocrProcessingEnabledRef.current) {
+            setOcrStatus(`⏳ Waiting ${processingInterval}ms before next frame...`);
             setTimeout(processWithOCR, processingInterval);
+          } else {
+            setOcrStatus('🛑 Stopped - conditions not met');
           }
         } catch (error) {
           console.log("❌ OCR processing error:", error);
-          // Retry only if scanner is still active
+          // Retry only if scanner is still active (use refs)
           // On mobile, wait longer before retry
           const browserInfo = getBrowserInfo();
           const retryDelay = browserInfo.isMobile ? 4000 : 3000;
           
-          if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessingRef.current && ocrProcessingEnabled) {
+          setOcrStatus(`❌ Error occurred, retrying in ${retryDelay}ms...`);
+          if (isScannerActiveRef.current && isInitializedRef.current && !emergencyStop && !shouldStopProcessingRef.current && ocrProcessingEnabledRef.current) {
             setTimeout(processWithOCR, retryDelay);
           }
         }
@@ -981,13 +1011,30 @@ const QrScanner: React.FC<QrScannerProps> = ({
         const currentVideo = document.getElementById('qr-video') as HTMLVideoElement || videoRef;
         
         // Double-check states before starting - use refs for current values
-        if (isScannerActive && isInitialized && !emergencyStop && currentVideo && !shouldStopProcessingRef.current && ocrProcessingEnabled) {
+        const scannerActive = isScannerActiveRef.current;
+        const initialized = isInitializedRef.current;
+        const ocrEnabled = ocrProcessingEnabledRef.current;
+        const shouldStop = shouldStopProcessingRef.current;
+        
+        console.log("🔍 Checking conditions to start OCR:", {
+          scannerActive,
+          initialized,
+          emergencyStop,
+          hasVideo: !!currentVideo,
+          shouldStop,
+          ocrEnabled,
+          stateValues: { isScannerActive, isInitialized, ocrProcessingEnabled } // For comparison
+        });
+        
+        if (scannerActive && initialized && !emergencyStop && currentVideo && !shouldStop && ocrEnabled) {
           // On mobile, also check if video has valid dimensions
           if (browserInfo.isMobile && (currentVideo.videoWidth === 0 || currentVideo.videoHeight === 0)) {
             console.log("⏳ Mobile video not ready yet, waiting another second...");
+            setOcrStatus('⏳ Mobile video initializing, waiting...');
             setTimeout(() => {
-              if (isScannerActive && isInitialized && !emergencyStop && currentVideo && !shouldStopProcessingRef.current && ocrProcessingEnabled) {
+              if (isScannerActiveRef.current && isInitializedRef.current && !emergencyStop && currentVideo && !shouldStopProcessingRef.current && ocrProcessingEnabledRef.current) {
                 console.log("✅ Starting OCR processing loop (mobile)...");
+                setOcrStatus('✅ Starting OCR loop (mobile)...');
                 processWithOCR();
               }
             }, 1000);
@@ -995,17 +1042,18 @@ const QrScanner: React.FC<QrScannerProps> = ({
           }
           
           console.log("✅ Starting OCR processing loop...", {
-            isScannerActive,
-            isInitialized,
+            scannerActive,
+            initialized,
             emergencyStop,
             hasVideo: !!currentVideo,
             videoDimensions: `${currentVideo.videoWidth}x${currentVideo.videoHeight}`,
-            shouldStopProcessing: shouldStopProcessingRef.current,
-            ocrProcessingEnabled,
+            shouldStop,
+            ocrEnabled,
             isMobile: browserInfo.isMobile
           });
+          setOcrStatus(`✅ OCR loop started! Video: ${currentVideo.videoWidth}x${currentVideo.videoHeight}`);
           processWithOCR();
-        } else {
+      } else {
           console.log("🛑 Scanner not properly initialized, skipping OCR processing start", {
             isScannerActive,
             isInitialized,
@@ -2515,23 +2563,65 @@ const QrScanner: React.FC<QrScannerProps> = ({
                   </div>
                 </div>
                 
-                <div className="mt-3 p-3 bg-green-50 rounded-lg">
-                  <p className="text-xs text-green-700 font-medium mb-1">🧪 Test the scanner:</p>
-                  <p className="text-xs text-green-600 mb-2">Try scanning this test QR code:</p>
-                  <div className="text-center">
-                    <div className="inline-block p-2 bg-white border border-green-200 rounded">
-                      <div className="w-16 h-16 bg-black grid grid-cols-8 gap-0.5">
-                        {/* Simple QR code pattern for testing */}
-                        {Array.from({ length: 64 }, (_, i) => (
-                          <div 
-                            key={i} 
-                            className={`w-1 h-1 ${Math.random() > 0.5 ? 'bg-white' : 'bg-black'}`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <p className="text-xs text-green-600 mt-1">Test IMEI: 123456789012345</p>
-                  </div>
+                <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                  <p className="text-xs text-green-700 font-medium mb-2">🧪 Test OCR with Image:</p>
+                  <p className="text-xs text-green-600 mb-2">Upload a test image with IMEI text to verify OCR is working:</p>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        console.log("🧪 TEST: Processing uploaded test image:", file.name);
+                        setOcrStatus("🧪 Testing OCR on uploaded image...");
+                        try {
+                          // Use the same image upload processing
+                          const reader = new FileReader();
+                          reader.onload = async (event) => {
+                            try {
+                              const img = document.createElement('img');
+                              img.onload = async () => {
+                                const canvas = document.createElement('canvas');
+                                const ctx = canvas.getContext('2d');
+                                if (!ctx) return;
+                                
+                                canvas.width = img.width;
+                                canvas.height = img.height;
+                                ctx.drawImage(img, 0, 0);
+                                
+                                const imeiPatterns = await extractIMEIsFromImage(canvas);
+                                if (imeiPatterns.length > 0) {
+                                  const firstImei = imeiPatterns[0];
+                                  console.log("✅ TEST SUCCESS: Found IMEI in test image:", firstImei);
+                                  setOcrStatus(`✅ TEST SUCCESS! Found IMEI: ${firstImei}`);
+                                  alert(`✅ OCR Test Successful!\n\nFound IMEI: ${firstImei}\n\nAll IMEIs found: ${imeiPatterns.join(', ')}`);
+                                  if (onScanSuccess) {
+                                    onScanSuccess(firstImei);
+                                  }
+                                } else {
+                                  console.log("❌ TEST: No IMEI found in test image");
+                                  setOcrStatus("❌ No IMEI detected in test image");
+                                  alert("❌ OCR Test: No IMEI found in the image.\n\nMake sure the image contains clear IMEI text (15 digits).");
+                                }
+                              };
+                              img.src = event.target?.result as string;
+                            } catch (error) {
+                              console.error("❌ TEST ERROR:", error);
+                              setOcrStatus(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        } catch (error) {
+                          console.error("❌ TEST ERROR:", error);
+                          setOcrStatus(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                        }
+                      }
+                    }}
+                    className="w-full text-xs text-green-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700"
+                  />
+                  <p className="text-xs text-green-600 mt-2">
+                    💡 Upload an image of a phone box with visible IMEI text to test OCR
+                  </p>
                 </div>
                 
               </div>
@@ -2698,7 +2788,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
             )}
             {scanMode === 'camera' && isInitialized && (
               <div className="w-full p-4 text-center">
-                {/* OCR Status Indicator */}
+                {/* OCR Status Indicator - Real-time */}
                 <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
                   <div className="flex items-center justify-center space-x-2 mb-2">
                     <span className="text-lg">🔬</span>
@@ -2710,36 +2800,53 @@ const QrScanner: React.FC<QrScannerProps> = ({
                       )}
                     </span>
                   </div>
+                  {ocrStatus && (
+                    <div className="mb-2 p-2 bg-white dark:bg-gray-800 rounded border border-purple-200 dark:border-purple-700">
+                      <p className="text-xs font-medium text-purple-800 dark:text-purple-200">
+                        {ocrStatus}
+                      </p>
+                    </div>
+                  )}
+                  {ocrFrameCount > 0 && (
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">
+                      📊 Frames processed: {ocrFrameCount}
+                    </p>
+                  )}
                   <p className="text-xs text-purple-600 dark:text-purple-400">
                     {ocrProcessingEnabled 
-                      ? "OCR will automatically process camera frames when barcode scanning fails"
+                      ? "OCR automatically processes camera frames every 1-2 seconds"
                       : "OCR is disabled. Enable it to use text recognition as fallback."}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    Check browser console (F12) for detailed OCR logs
+                    💡 Tip: Use the test button below to manually trigger OCR on current frame
                   </p>
                 </div>
                 <div className="mb-4 space-y-2">
                   <button
                     onClick={async () => {
-                      console.log("Manual OCR trigger for camera...");
+                      console.log("🧪 TEST: Manual OCR trigger for camera...");
+                      setOcrStatus("🧪 Testing OCR on current frame...");
                       try {
                         const ocrResult = await captureAndProcessCameraFrame();
                         if (ocrResult) {
-                          console.log("Manual OCR successful:", ocrResult);
+                          console.log("✅ TEST SUCCESS: Manual OCR successful:", ocrResult);
+                          setOcrStatus(`✅ SUCCESS! Found IMEI: ${ocrResult}`);
                           onScanSuccess(ocrResult);
                         } else {
-                          alert("OCR could not detect IMEI in current camera view. Try:\n• Moving closer to the barcode\n• Ensuring good lighting\n• Making sure the barcode is clearly visible");
+                          console.log("❌ TEST: OCR could not detect IMEI");
+                          setOcrStatus("❌ No IMEI detected. Try moving closer or improving lighting.");
+                          alert("OCR could not detect IMEI in current camera view.\n\nTry:\n• Moving closer to the text/IMEI\n• Ensuring good lighting\n• Making sure the IMEI text is clearly visible\n• Hold phone steady for 2-3 seconds");
                         }
                       } catch (error) {
-                        console.error("Manual OCR failed:", error);
+                        console.error("❌ TEST ERROR: Manual OCR failed:", error);
+                        setOcrStatus(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
                         alert("OCR processing failed. Please try again or use manual input.");
                       }
                     }}
-                    className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center justify-center space-x-2"
+                    className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 active:bg-green-800 transition-colors text-sm font-medium flex items-center justify-center space-x-2 touch-manipulation"
                   >
-                    <span>🔍</span>
-                    <span>Try OCR Text Recognition</span>
+                    <span>🧪</span>
+                    <span>TEST OCR Now (Current Frame)</span>
                   </button>
                   
                   <button
