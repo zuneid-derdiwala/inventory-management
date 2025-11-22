@@ -325,6 +325,8 @@ const QrScanner: React.FC<QrScannerProps> = ({
   const ocrProcessingEnabledRef = useRef(false); // Use ref for synchronous access
   const [ocrStatus, setOcrStatus] = useState<string>(''); // Debug: OCR status message
   const [ocrFrameCount, setOcrFrameCount] = useState(0); // Debug: Count of frames processed
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null); // Focus point for tap-to-focus
+  const [isFocusing, setIsFocusing] = useState(false); // Focus animation state
 
   // Global error suppression for DOM manipulation errors
   React.useEffect(() => {
@@ -719,15 +721,29 @@ const QrScanner: React.FC<QrScannerProps> = ({
       video.setAttribute('webkit-playsinline', 'true');
       container.appendChild(video);
       
-      // Mobile-optimized camera constraints
-      // Use lower resolution on mobile for better performance
+      // Mobile-optimized camera constraints with better quality
+      // Balance quality and performance for mobile
       const browserInfoForConstraints = getBrowserInfo();
-      const constraints = {
+      const constraints: MediaStreamConstraints = {
         video: {
-          facingMode: { ideal: "environment" }, // Back camera
-          width: browserInfoForConstraints.isMobile ? { ideal: 640, min: 320 } : { ideal: 1280, min: 640 },
-          height: browserInfoForConstraints.isMobile ? { ideal: 480, min: 240 } : { ideal: 720, min: 480 },
-          frameRate: browserInfoForConstraints.isMobile ? { ideal: 10, max: 15 } : { ideal: 15, max: 30 }
+          facingMode: { ideal: "environment" }, // Back camera (better quality)
+          // Higher resolution for better OCR quality, but still reasonable for mobile
+          width: browserInfoForConstraints.isMobile ? { ideal: 1280, min: 640 } : { ideal: 1920, min: 1280 },
+          height: browserInfoForConstraints.isMobile ? { ideal: 720, min: 480 } : { ideal: 1080, min: 720 },
+          // Higher frame rate for smoother experience
+          frameRate: browserInfoForConstraints.isMobile ? { ideal: 24, max: 30 } : { ideal: 30, max: 60 },
+          // Image quality settings for better low-light performance
+          ...(browserInfoForConstraints.isMobile && {
+            // Exposure compensation for better low-light (if supported)
+            exposureMode: { ideal: 'continuous' },
+            // White balance for better color accuracy
+            whiteBalanceMode: { ideal: 'continuous' },
+            // Focus mode - prefer continuous for better text recognition
+            // Will allow manual focus via tap-to-focus
+            focusMode: { ideal: 'continuous' },
+            // ISO settings for low light (if supported)
+            // Note: These may not be supported on all devices
+          } as any)
         },
         audio: false
       };
@@ -741,6 +757,120 @@ const QrScanner: React.FC<QrScannerProps> = ({
       video.autoplay = true;
       video.muted = true;
       video.playsInline = true;
+      
+      // Add tap-to-focus functionality
+      const setupTapToFocus = () => {
+        const handleFocusTap = async (event: MouseEvent | TouchEvent) => {
+          const videoElement = document.getElementById('qr-video') as HTMLVideoElement;
+          if (!videoElement || !stream) return;
+          
+          // Prevent default to avoid any unwanted behavior
+          if (event instanceof MouseEvent) {
+            event.preventDefault();
+          }
+          
+          // Get click/touch position relative to video
+          const rect = videoElement.getBoundingClientRect();
+          let x: number, y: number;
+          
+          if (event instanceof TouchEvent && event.touches.length > 0) {
+            x = event.touches[0].clientX - rect.left;
+            y = event.touches[0].clientY - rect.top;
+          } else if (event instanceof MouseEvent) {
+            x = event.clientX - rect.left;
+            y = event.clientY - rect.top;
+          } else {
+            return;
+          }
+          
+          // Normalize coordinates (0.0 to 1.0)
+          const normalizedX = Math.max(0, Math.min(1, x / rect.width));
+          const normalizedY = Math.max(0, Math.min(1, y / rect.height));
+          
+          // Set focus point for visual indicator
+          setFocusPoint({ x: normalizedX * 100, y: normalizedY * 100 });
+          setIsFocusing(true);
+          
+          // Try to apply focus constraints
+          try {
+            const videoTrack = stream.getVideoTracks()[0];
+            if (videoTrack && videoTrack.getCapabilities) {
+              const capabilities = videoTrack.getCapabilities() as any; // Type assertion for extended capabilities
+              
+              // Check if focus is supported
+              if (capabilities.focusMode && Array.isArray(capabilities.focusMode)) {
+                if (capabilities.focusMode.includes('manual')) {
+                  // Try manual focus at the tap point
+                  await videoTrack.applyConstraints({
+                    advanced: [
+                      {
+                        focusMode: 'manual',
+                        pointsOfInterest: [{ x: normalizedX, y: normalizedY }]
+                      } as any
+                    ]
+                  });
+                  console.log("✅ Manual focus applied at:", normalizedX, normalizedY);
+                } else if (capabilities.focusMode.includes('single-shot')) {
+                  // Try single-shot focus
+                  await videoTrack.applyConstraints({
+                    advanced: [
+                      {
+                        focusMode: 'single-shot',
+                        pointsOfInterest: [{ x: normalizedX, y: normalizedY }]
+                      } as any
+                    ]
+                  });
+                  console.log("✅ Single-shot focus applied at:", normalizedX, normalizedY);
+                } else if (capabilities.focusMode.includes('continuous')) {
+                  // Trigger refocus by briefly switching to single-shot then back
+                  await videoTrack.applyConstraints({
+                    advanced: [{ focusMode: 'single-shot' } as any]
+                  });
+                  setTimeout(async () => {
+                    try {
+                      await videoTrack.applyConstraints({
+                        advanced: [{ focusMode: 'continuous' } as any]
+                      });
+                    } catch (e) {
+                      console.log("Focus mode reset failed:", e);
+                    }
+                  }, 100);
+                  console.log("✅ Focus triggered (continuous mode)");
+                }
+              }
+            }
+          } catch (error) {
+            console.log("⚠️ Focus control not supported or failed:", error);
+            // Still show visual feedback even if focus control fails
+          }
+          
+          // Hide focus indicator after animation
+          setTimeout(() => {
+            setIsFocusing(false);
+            setTimeout(() => setFocusPoint(null), 500); // Remove after animation
+          }, 1500);
+        };
+        
+        // Add event listeners for both mouse and touch
+        const clickHandler = (e: Event) => handleFocusTap(e as MouseEvent);
+        const touchHandler = (e: Event) => handleFocusTap(e as TouchEvent);
+        
+        video.addEventListener('click', clickHandler);
+        video.addEventListener('touchend', touchHandler);
+        
+        // Make video element appear clickable
+        video.style.cursor = 'pointer';
+        video.setAttribute('title', 'Tap to focus');
+        
+        // Return cleanup function
+        return () => {
+          video.removeEventListener('click', clickHandler);
+          video.removeEventListener('touchend', touchHandler);
+        };
+      };
+      
+      // Setup tap-to-focus after video is ready
+      setupTapToFocus();
       
       // Wait for video to be ready (mobile needs more time)
       await new Promise((resolve, reject) => {
@@ -974,9 +1104,10 @@ const QrScanner: React.FC<QrScannerProps> = ({
           console.log("Advanced processing did not find valid IMEI in camera frame");
           
           // Continue processing only if scanner is still active (use refs)
-          // On mobile, process less frequently to avoid performance issues
+          // Optimized intervals: faster processing for better responsiveness
           const browserInfo = getBrowserInfo();
-          const processingInterval = browserInfo.isMobile ? 2000 : 1000; // 2 seconds on mobile, 1 second on desktop
+          // Reduced interval for faster processing - image enhancement is now optimized
+          const processingInterval = browserInfo.isMobile ? 1500 : 800; // 1.5s on mobile, 0.8s on desktop
           
           if (isScannerActiveRef.current && isInitializedRef.current && !emergencyStop && !shouldStopProcessingRef.current && ocrProcessingEnabledRef.current) {
             setOcrStatus(`⏳ Waiting ${processingInterval}ms before next frame...`);
@@ -2771,9 +2902,35 @@ const QrScanner: React.FC<QrScannerProps> = ({
           <div 
             ref={containerRef}
             id={qrCodeContainerId} 
-            className="w-full h-auto min-h-[300px]"
+            className="w-full h-auto min-h-[300px] relative"
             style={{ minHeight: '300px' }}
           >
+            {/* Focus indicator overlay */}
+            {focusPoint && (
+              <div
+                className="absolute pointer-events-none z-10"
+                style={{
+                  left: `${focusPoint.x}%`,
+                  top: `${focusPoint.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                  transition: isFocusing ? 'all 0.3s ease' : 'opacity 0.5s ease'
+                }}
+              >
+                <div
+                  className={`w-20 h-20 border-4 rounded-full ${
+                    isFocusing 
+                      ? 'border-blue-400 shadow-lg shadow-blue-400/50 scale-100' 
+                      : 'border-blue-600 scale-75 opacity-0'
+                  }`}
+                  style={{
+                    boxShadow: isFocusing ? '0 0 20px rgba(59, 130, 246, 0.6)' : 'none'
+                  }}
+                />
+                {isFocusing && (
+                  <div className="absolute inset-0 border-2 border-white rounded-full animate-ping" />
+                )}
+              </div>
+            )}
             {scanMode === 'camera' && !isInitialized && !isInitializing && (
               <div className="w-full p-4 text-center">
                 <Camera className="h-8 w-8 mx-auto mb-2 text-gray-400" />
@@ -2788,6 +2945,13 @@ const QrScanner: React.FC<QrScannerProps> = ({
             )}
             {scanMode === 'camera' && isInitialized && (
               <div className="w-full p-4 text-center">
+                {/* Focus Hint */}
+                <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                    💡 <strong>Tip:</strong> Tap anywhere on the camera view to focus on that area
+                  </p>
+                </div>
+                
                 {/* OCR Status Indicator - Real-time */}
                 <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
                   <div className="flex items-center justify-center space-x-2 mb-2">
