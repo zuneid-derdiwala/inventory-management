@@ -56,6 +56,13 @@ const validateIMEI = (imei: string): { isValid: boolean; error?: string } => {
   
   // IMEI should be 14 or 15 digits (standard is 15, but some systems use 14)
   if (cleanedIMEI.length < 14 || cleanedIMEI.length > 15) {
+    // Check if it's a concatenated IMEI (19-20 digits)
+    if (cleanedIMEI.length >= 19 && cleanedIMEI.length <= 20) {
+      return { 
+        isValid: false, 
+        error: `IMEI must be 14 or 15 digits. Detected ${cleanedIMEI.length} digits - this might be two IMEIs concatenated. The scanner will automatically split it.` 
+      };
+    }
     return { isValid: false, error: "IMEI must be 14 or 15 digits" };
   }
   

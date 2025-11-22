@@ -42,6 +42,58 @@ async function extractIMEIsFromImage(canvas: HTMLCanvasElement): Promise<string[
   }
 }
 
+// Helper function to split concatenated IMEIs (19-20 digits into two 15-digit IMEIs)
+function splitConcatenatedIMEI(longNumber: string): string[] {
+  const results: string[] = [];
+  
+  // If it's 19-20 digits, try to split into two 15-digit IMEIs
+  if (longNumber.length >= 19 && longNumber.length <= 20) {
+    console.log("Attempting to split concatenated IMEI:", longNumber, "length:", longNumber.length);
+    
+    // Try splitting at position 15 (most common case)
+    const firstImei = longNumber.substring(0, 15);
+    const secondPart = longNumber.substring(15);
+    
+    // First IMEI should always be 15 digits
+    if (firstImei.length === 15 && (firstImei.startsWith('3') || firstImei.startsWith('8'))) {
+      results.push(firstImei);
+      console.log("✅ Split concatenated IMEI - First part (15 digits):", firstImei);
+    }
+    
+    // Handle second part based on remaining length
+    if (longNumber.length === 19) {
+      // 19 digits = 15 + 4, second part is incomplete
+      // Just use the first IMEI, second part is too short
+      console.log("⚠️ Second part is only 4 digits, skipping:", secondPart);
+    } else if (longNumber.length === 20) {
+      // 20 digits = 15 + 5, might be 15 + 5 or could be split differently
+      // Try: 15 + 5 (second incomplete) OR 14 + 6 (both incomplete) OR 15 + 5 where second starts with 3/8
+      if (secondPart.length === 5) {
+        // Second part is only 5 digits, incomplete
+        console.log("⚠️ Second part is only 5 digits, skipping:", secondPart);
+      }
+      
+      // Alternative: Try splitting as 14 + 6 (both might be incomplete but valid)
+      // But standard is 15 digits, so we'll stick with 15 + 5
+    }
+    
+    // If we have exactly 30 digits, try splitting into two 15-digit IMEIs
+    if (longNumber.length === 30) {
+      const firstImei30 = longNumber.substring(0, 15);
+      const secondImei30 = longNumber.substring(15, 30);
+      
+      if ((firstImei30.startsWith('3') || firstImei30.startsWith('8')) &&
+          (secondImei30.startsWith('3') || secondImei30.startsWith('8'))) {
+        results.push(firstImei30);
+        results.push(secondImei30);
+        console.log("✅ Split 30-digit number into two IMEIs:", firstImei30, "and", secondImei30);
+      }
+    }
+  }
+  
+  return results;
+}
+
 // Enhanced IMEI extraction for phone packaging
 function extractIMEIsFromText(text: string): string[] {
   const results: string[] = [];
@@ -69,6 +121,68 @@ function extractIMEIsFromText(text: string): string[] {
   if (imeiMeidMatch) {
     console.log("Found IMEI/MEID:", imeiMeidMatch[1]);
     results.push(imeiMeidMatch[1]);
+  }
+  
+  // Check for concatenated IMEIs (19-20 digits after "IMEI:")
+  // This handles cases like "IMEI: 3251600990000013254" where two IMEIs are concatenated
+  const concatenatedMatch = text.match(/IMEI\s*:?\s*([0-9]{19,30})/i);
+  if (concatenatedMatch) {
+    const longNumber = concatenatedMatch[1];
+    console.log("🔍 Found concatenated IMEI pattern (19-30 digits after 'IMEI:'):", longNumber);
+    
+    // Only process if it's 19-20 or 30 digits (two complete IMEIs)
+    if (longNumber.length >= 19 && longNumber.length <= 20) {
+      const splitImeis = splitConcatenatedIMEI(longNumber);
+      splitImeis.forEach(imei => {
+        if (!results.includes(imei)) {
+          results.push(imei);
+          console.log("✅ Added IMEI from concatenated pattern:", imei);
+        }
+      });
+    } else if (longNumber.length === 30) {
+      // 30 digits = two complete 15-digit IMEIs
+      const splitImeis = splitConcatenatedIMEI(longNumber);
+      splitImeis.forEach(imei => {
+        if (!results.includes(imei)) {
+          results.push(imei);
+          console.log("✅ Added IMEI from 30-digit pattern:", imei);
+        }
+      });
+    }
+  }
+  
+  // Find any standalone 19-20 or 30 digit numbers that might be concatenated IMEIs
+  // This catches cases where the number appears without "IMEI:" prefix
+  const longNumberMatch = text.match(/(?:^|[^0-9])([0-9]{19,20})(?:[^0-9]|$)/);
+  if (longNumberMatch) {
+    const longNumber = longNumberMatch[1];
+    // Only process if it starts with 3 or 8 (common IMEI prefixes)
+    if (longNumber.startsWith('3') || longNumber.startsWith('8')) {
+      console.log("🔍 Found standalone concatenated IMEI (19-20 digits):", longNumber);
+      const splitImeis = splitConcatenatedIMEI(longNumber);
+      splitImeis.forEach(imei => {
+        if (!results.includes(imei)) {
+          results.push(imei);
+          console.log("✅ Added IMEI from standalone pattern:", imei);
+        }
+      });
+    }
+  }
+  
+  // Also check for 30-digit standalone numbers (two complete IMEIs)
+  const thirtyDigitMatch = text.match(/(?:^|[^0-9])([0-9]{30})(?:[^0-9]|$)/);
+  if (thirtyDigitMatch) {
+    const longNumber = thirtyDigitMatch[1];
+    if (longNumber.startsWith('3') || longNumber.startsWith('8')) {
+      console.log("🔍 Found standalone 30-digit number (two IMEIs):", longNumber);
+      const splitImeis = splitConcatenatedIMEI(longNumber);
+      splitImeis.forEach(imei => {
+        if (!results.includes(imei)) {
+          results.push(imei);
+          console.log("✅ Added IMEI from 30-digit standalone:", imei);
+        }
+      });
+    }
   }
   
   // Finally, find any other 15-digit numbers that look like IMEIs
@@ -339,6 +453,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
     setErrorMessage("");
     setErrorCount(0);
     setLastErrorTime(0);
+    // Reset OCR processing flags when switching to upload mode
+    setOcrProcessingEnabled(false);
+    setShouldStopProcessing(true);
     
     // Clear any pending timeouts
     if (scanTimeout) {
@@ -386,6 +503,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
     setErrorMessage("");
     setErrorCount(0);
     setLastErrorTime(0);
+    // Reset OCR processing flags when switching to camera mode (will be enabled when scanner starts)
+    setOcrProcessingEnabled(false);
+    setShouldStopProcessing(true);
     
     // Clear any pending timeouts
     if (scanTimeout) {
@@ -422,7 +542,14 @@ const QrScanner: React.FC<QrScannerProps> = ({
         return null;
       }
       
-      console.log("🔬 Starting OCR-based IMEI extraction from camera frame...");
+      console.log("🔬 [OCR] Starting OCR-based IMEI extraction from camera frame...");
+      console.log("🔬 [OCR] Status check:", {
+        ocrProcessingEnabled,
+        isScannerActive,
+        isInitialized,
+        emergencyStop,
+        shouldStopProcessing
+      });
       
       // Get the video element from the scanner container
       const container = document.getElementById(qrCodeContainerId);
@@ -438,7 +565,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
         return null;
       }
       
-      console.log("📹 Camera frame captured, dimensions:", videoElement.videoWidth, "x", videoElement.videoHeight);
+      console.log("📹 [OCR] Camera frame captured, dimensions:", videoElement.videoWidth, "x", videoElement.videoHeight);
       
       // Create a canvas to capture the current frame
       const canvas = document.createElement('canvas');
@@ -503,7 +630,8 @@ const QrScanner: React.FC<QrScannerProps> = ({
       
       // Method 2: OCR-based IMEI extraction from camera frame (same as upload mode)
       if (!detectedText) {
-        console.log("Trying OCR-based IMEI extraction from camera frame...");
+        console.log("🔬 [OCR] Trying OCR-based IMEI extraction from camera frame...");
+        console.log("🔬 [OCR] Calling Tesseract.js OCR engine...");
         try {
           const imeiPatterns = await extractIMEIsFromImage(canvas);
           
@@ -524,8 +652,8 @@ const QrScanner: React.FC<QrScannerProps> = ({
               const firstImei = validImeis[0];
               const validImei = imeiIsValid(firstImei) ? firstImei : validImeis.find(imei => imeiIsValid(imei)) || firstImei;
               detectedText = validImei;
-              console.log("OCR extracted valid IMEI from camera frame:", validImei);
-              console.log("All IMEIs found via OCR:", validImeis);
+              console.log("✅ [OCR] SUCCESS! OCR extracted valid IMEI from camera frame:", validImei);
+              console.log("📋 [OCR] All IMEIs found via OCR:", validImeis);
             }
           }
         } catch (extractionError) {
@@ -577,7 +705,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
       console.log("❌ OCR processing of camera frame failed:", error);
       return null;
     }
-  }, [qrCodeContainerId, isScannerActive, isInitialized, emergencyStop, ocrProcessingEnabled]);
+  }, [qrCodeContainerId, isScannerActive, isInitialized, emergencyStop, ocrProcessingEnabled, shouldStopProcessing]);
 
   // Direct QR scanner using native camera API for better mobile support
   const startDirectQRScanner = useCallback(async () => {
@@ -1545,6 +1673,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
       // Update state immediately
       setIsScannerActive(false);
       setIsInitialized(false);
+      // Disable OCR processing when scanner stops
+      setOcrProcessingEnabled(false);
+      setShouldStopProcessing(true);
       
       // Check if the container still exists in the DOM
       const container = document.getElementById(qrCodeContainerId);
@@ -2089,10 +2220,15 @@ const QrScanner: React.FC<QrScannerProps> = ({
         undefined // Completely disable error callback to prevent infinite loop
       );
       
-      console.log("Direct scanner started successfully");
+      console.log("✅ Direct scanner started successfully");
+      console.log("🔬 [OCR] Enabling OCR processing for camera frames...");
       setIsInitialized(true);
       setIsScannerActive(true);
       setIsInitializing(false);
+      // Enable OCR processing for camera frames (same as image upload mode)
+      setOcrProcessingEnabled(true);
+      setShouldStopProcessing(false);
+      console.log("✅ [OCR] OCR processing is now ENABLED and ready");
       
       // Set a timeout to stop scanning after 30 seconds if no QR code is found
       const timeout = setTimeout(() => {
@@ -2913,7 +3049,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
           {/* Mode Status */}
           {scanMode === 'camera' && (
             <div className="w-full p-3 bg-blue-50 border-b border-blue-200">
-              <div className="flex items-center justify-center space-x-2">
+              <div className="flex items-center justify-center space-x-2 flex-wrap gap-2">
                 <Camera className="h-5 w-5 text-blue-600" />
                 <span className="text-sm font-medium text-blue-700">Camera Mode Active</span>
                 {isInitialized && (
@@ -2921,6 +3057,12 @@ const QrScanner: React.FC<QrScannerProps> = ({
                 )}
                 {isInitializing && (
                   <span className="text-xs text-yellow-600">• Initializing...</span>
+                )}
+                {ocrProcessingEnabled && isInitialized && (
+                  <span className="text-xs text-purple-600 font-semibold">• OCR Enabled</span>
+                )}
+                {!ocrProcessingEnabled && isInitialized && (
+                  <span className="text-xs text-orange-600">• OCR Disabled</span>
                 )}
               </div>
             </div>
@@ -2956,6 +3098,27 @@ const QrScanner: React.FC<QrScannerProps> = ({
             )}
             {scanMode === 'camera' && isInitialized && (
               <div className="w-full p-4 text-center">
+                {/* OCR Status Indicator */}
+                <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                  <div className="flex items-center justify-center space-x-2 mb-2">
+                    <span className="text-lg">🔬</span>
+                    <span className="text-sm font-semibold text-purple-700 dark:text-purple-300">
+                      OCR Status: {ocrProcessingEnabled ? (
+                        <span className="text-green-600 dark:text-green-400">✅ ENABLED</span>
+                      ) : (
+                        <span className="text-red-600 dark:text-red-400">❌ DISABLED</span>
+                      )}
+                    </span>
+                  </div>
+                  <p className="text-xs text-purple-600 dark:text-purple-400">
+                    {ocrProcessingEnabled 
+                      ? "OCR will automatically process camera frames when barcode scanning fails"
+                      : "OCR is disabled. Enable it to use text recognition as fallback."}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Check browser console (F12) for detailed OCR logs
+                  </p>
+                </div>
                 <div className="mb-4 space-y-2">
                   <button
                     onClick={async () => {
