@@ -1,14 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Eye, EyeOff, Mail, CheckCircle2, Phone, Check, ChevronsUpDown } from "lucide-react";
+import { Loader2, Eye, EyeOff, Mail, CheckCircle2, Phone, Check, ChevronsUpDown, CheckCircle, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { validatePasswordCriteria, calculatePasswordStrength, getPasswordCriteriaText } from "@/utils/passwordValidation";
 import {
   Command,
   CommandEmpty,
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { validatePhoneNumber } from "@/utils/phoneValidation";
+import HCaptcha from "@hcaptcha/react-hcaptcha";
 
 // Common country codes for mobile numbers
 const COUNTRY_CODES = [
@@ -84,8 +86,16 @@ const Signup = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [signupSuccess, setSignupSuccess] = useState(false);
   
+  // Password validation state
+  const passwordCriteria = validatePasswordCriteria(password);
+  const passwordStrength = calculatePasswordStrength(password);
+  
+  // hCaptcha state
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = React.useRef<any>(null);
+  const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY || "";
+  
   const { signUp } = useAuth();
-  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,8 +108,11 @@ const Signup = () => {
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters long");
+    const criteria = validatePasswordCriteria(password);
+    const missingCriteria = getPasswordCriteriaText(criteria);
+    
+    if (missingCriteria.length > 0) {
+      setError(`Password must meet all requirements: ${missingCriteria.join(", ")}`);
       return;
     }
 
@@ -117,13 +130,29 @@ const Signup = () => {
       }
     }
 
+    // Check if captcha is verified (only if site key is configured)
+    if (HCAPTCHA_SITE_KEY && !captchaToken) {
+      setError("Please complete the captcha verification");
+      return;
+    }
+
     setIsLoading(true);
 
-    const result = await signUp(email, password, username, mobile.trim() || undefined, countryCode);
+    const result = await signUp(email, password, username, mobile.trim() || undefined, countryCode, captchaToken || undefined);
     
     if (result.success) {
+      // Reset captcha after successful signup
+      if (captchaRef.current) {
+        captchaRef.current.resetCaptcha();
+        setCaptchaToken(null);
+      }
       setSignupSuccess(true);
     } else {
+      // Reset captcha on error so user can try again
+      if (captchaRef.current && result.error?.toLowerCase().includes('captcha')) {
+        captchaRef.current.resetCaptcha();
+        setCaptchaToken(null);
+      }
       setError(result.error || "Signup failed");
     }
     
@@ -319,6 +348,11 @@ const Signup = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   disabled={isLoading}
+                  className={cn(
+                    password && passwordStrength.score < 2 && "border-orange-500",
+                    password && passwordStrength.score >= 2 && passwordStrength.score < 4 && "border-yellow-500",
+                    password && passwordStrength.score === 4 && "border-green-500"
+                  )}
                 />
                 <Button
                   type="button"
@@ -335,6 +369,82 @@ const Signup = () => {
                   )}
                 </Button>
               </div>
+              
+              {/* Password Strength Indicator */}
+              {password && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium">Strength:</span>
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          "h-full transition-all duration-300",
+                          passwordStrength.color === "red" && "bg-red-500",
+                          passwordStrength.color === "orange" && "bg-orange-500",
+                          passwordStrength.color === "yellow" && "bg-yellow-500",
+                          passwordStrength.color === "blue" && "bg-blue-500",
+                          passwordStrength.color === "green" && "bg-green-500"
+                        )}
+                        style={{ width: `${(passwordStrength.score / 4) * 100}%` }}
+                      />
+                    </div>
+                    <span className={cn(
+                      "text-xs font-semibold",
+                      passwordStrength.color === "red" && "text-red-500",
+                      passwordStrength.color === "orange" && "text-orange-500",
+                      passwordStrength.color === "yellow" && "text-yellow-500",
+                      passwordStrength.color === "blue" && "text-blue-500",
+                      passwordStrength.color === "green" && "text-green-500"
+                    )}>
+                      {passwordStrength.label}
+                    </span>
+                  </div>
+                  
+                  {/* Password Criteria */}
+                  <div className="space-y-1 text-xs">
+                    <div className={cn("flex items-center gap-2", passwordCriteria.hasLowercase ? "text-green-600" : "text-gray-500")}>
+                      {passwordCriteria.hasLowercase ? (
+                        <CheckCircle className="h-3 w-3" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                      <span>Lowercase letter (a-z)</span>
+                    </div>
+                    <div className={cn("flex items-center gap-2", passwordCriteria.hasUppercase ? "text-green-600" : "text-gray-500")}>
+                      {passwordCriteria.hasUppercase ? (
+                        <CheckCircle className="h-3 w-3" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                      <span>Uppercase letter (A-Z)</span>
+                    </div>
+                    <div className={cn("flex items-center gap-2", passwordCriteria.hasNumber ? "text-green-600" : "text-gray-500")}>
+                      {passwordCriteria.hasNumber ? (
+                        <CheckCircle className="h-3 w-3" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                      <span>Number (0-9)</span>
+                    </div>
+                    <div className={cn("flex items-center gap-2", passwordCriteria.hasSpecialChar ? "text-green-600" : "text-gray-500")}>
+                      {passwordCriteria.hasSpecialChar ? (
+                        <CheckCircle className="h-3 w-3" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                      <span>Special character (!@#$%...)</span>
+                    </div>
+                    <div className={cn("flex items-center gap-2", passwordCriteria.hasMinLength ? "text-green-600" : "text-gray-500")}>
+                      {passwordCriteria.hasMinLength ? (
+                        <CheckCircle className="h-3 w-3" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                      <span>At least 8 characters</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             
             <div className="space-y-2">
@@ -348,6 +458,10 @@ const Signup = () => {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   disabled={isLoading}
+                  className={cn(
+                    confirmPassword && password !== confirmPassword && "border-red-500",
+                    confirmPassword && password === confirmPassword && "border-green-500"
+                  )}
                 />
                 <Button
                   type="button"
@@ -364,9 +478,48 @@ const Signup = () => {
                   )}
                 </Button>
               </div>
+              {confirmPassword && (
+                <div className="flex items-center gap-2 text-xs">
+                  {password === confirmPassword ? (
+                    <>
+                      <CheckCircle className="h-3 w-3 text-green-600" />
+                      <span className="text-green-600">Passwords match</span>
+                    </>
+                  ) : (
+                    <>
+                      <X className="h-3 w-3 text-red-500" />
+                      <span className="text-red-500">Passwords do not match</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            {/* hCaptcha */}
+            {HCAPTCHA_SITE_KEY && (
+              <div className="flex justify-center items-center py-4 w-full">
+                <div className="w-full max-w-[400px] flex justify-center">
+                  <div className="transform scale-110 origin-center">
+                    <HCaptcha
+                      ref={captchaRef}
+                      sitekey={HCAPTCHA_SITE_KEY}
+                      size="normal"
+                      theme="light"
+                      onVerify={(token: string) => setCaptchaToken(token)}
+                      onError={() => {
+                        setError("Captcha verification failed. Please try again.");
+                        setCaptchaToken(null);
+                      }}
+                      onExpire={() => {
+                        setCaptchaToken(null);
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <Button type="submit" className="w-full" disabled={isLoading || (HCAPTCHA_SITE_KEY && !captchaToken)}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

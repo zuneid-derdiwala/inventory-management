@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => { // Use a function to access mode
       // Expose environment variables to your client-side code
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
       'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
+      'import.meta.env.VITE_HCAPTCHA_SITE_KEY': JSON.stringify(env.VITE_HCAPTCHA_SITE_KEY),
     },
   };
 });

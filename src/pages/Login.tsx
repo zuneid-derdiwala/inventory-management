@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Eye, EyeOff, Mail, AlertCircle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { showError } from "@/utils/toast";
+import HCaptcha from "@hcaptcha/react-hcaptcha";
 
 const Login = () => {
   const [usernameOrEmail, setUsernameOrEmail] = useState("");
@@ -21,6 +22,10 @@ const Login = () => {
   const [showVerificationAlert, setShowVerificationAlert] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [userEmail, setUserEmail] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = React.useRef<any>(null);
+  
+  const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY || "";
   
   const { signIn, resendVerificationEmail } = useAuth();
   const navigate = useNavigate();
@@ -40,13 +45,30 @@ const Login = () => {
     e.preventDefault();
     setError("");
     setShowVerificationAlert(false);
+    
+    // Check if captcha is verified (only if site key is configured)
+    if (HCAPTCHA_SITE_KEY && !captchaToken) {
+      setError("Please complete the captcha verification");
+      return;
+    }
+    
     setIsLoading(true);
 
-    const result = await signIn(usernameOrEmail, password);
+    const result = await signIn(usernameOrEmail, password, captchaToken || undefined);
     
     if (result.success) {
+      // Reset captcha after successful login
+      if (captchaRef.current) {
+        captchaRef.current.resetCaptcha();
+        setCaptchaToken(null);
+      }
       navigate("/");
     } else {
+      // Reset captcha on error so user can try again
+      if (captchaRef.current && result.error?.toLowerCase().includes('captcha')) {
+        captchaRef.current.resetCaptcha();
+        setCaptchaToken(null);
+      }
       // Check if the error is about email verification
       const isVerificationError = result.error?.toLowerCase().includes("verify") || 
                                   result.error?.toLowerCase().includes("verification") ||
@@ -225,7 +247,31 @@ const Login = () => {
               </div>
             </div>
             
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            {/* hCaptcha */}
+            {HCAPTCHA_SITE_KEY && (
+              <div className="flex justify-center items-center py-4 w-full">
+                <div className="w-full max-w-[400px] flex justify-center">
+                  <div className="transform scale-110 origin-center">
+                    <HCaptcha
+                      ref={captchaRef}
+                      sitekey={HCAPTCHA_SITE_KEY}
+                      size="normal"
+                      theme="light"
+                      onVerify={(token: string) => setCaptchaToken(token)}
+                      onError={() => {
+                        setError("Captcha verification failed. Please try again.");
+                        setCaptchaToken(null);
+                      }}
+                      onExpire={() => {
+                        setCaptchaToken(null);
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <Button type="submit" className="w-full" disabled={isLoading || (HCAPTCHA_SITE_KEY && !captchaToken)}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

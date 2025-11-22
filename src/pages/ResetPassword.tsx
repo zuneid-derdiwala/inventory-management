@@ -7,9 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ArrowLeft, CheckCircle } from "lucide-react";
+import { Loader2, ArrowLeft, CheckCircle, CheckCircle2, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { validatePasswordCriteria, calculatePasswordStrength } from "@/utils/passwordValidation";
+import { cn } from "@/lib/utils";
 
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
@@ -19,6 +21,10 @@ const ResetPassword = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isValidSession, setIsValidSession] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
+  
+  // Password validation state
+  const passwordCriteria = validatePasswordCriteria(password);
+  const passwordStrength = calculatePasswordStrength(password);
   
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -162,8 +168,9 @@ const ResetPassword = () => {
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters long");
+    const missingCriteria = Object.values(passwordCriteria).filter(c => !c);
+    if (missingCriteria.length > 0) {
+      setError("Password must meet all requirements");
       return;
     }
 
@@ -299,9 +306,89 @@ const ResetPassword = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={isLoading}
-                minLength={6}
-                className="text-sm sm:text-base"
+                className={cn(
+                  "text-sm sm:text-base",
+                  password && passwordStrength.score < 2 && "border-orange-500",
+                  password && passwordStrength.score >= 2 && passwordStrength.score < 4 && "border-yellow-500",
+                  password && passwordStrength.score === 4 && "border-green-500"
+                )}
               />
+              
+              {/* Password Strength Indicator */}
+              {password && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium">Strength:</span>
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          "h-full transition-all duration-300",
+                          passwordStrength.color === "red" && "bg-red-500",
+                          passwordStrength.color === "orange" && "bg-orange-500",
+                          passwordStrength.color === "yellow" && "bg-yellow-500",
+                          passwordStrength.color === "blue" && "bg-blue-500",
+                          passwordStrength.color === "green" && "bg-green-500"
+                        )}
+                        style={{ width: `${(passwordStrength.score / 4) * 100}%` }}
+                      />
+                    </div>
+                    <span className={cn(
+                      "text-xs font-semibold",
+                      passwordStrength.color === "red" && "text-red-500",
+                      passwordStrength.color === "orange" && "text-orange-500",
+                      passwordStrength.color === "yellow" && "text-yellow-500",
+                      passwordStrength.color === "blue" && "text-blue-500",
+                      passwordStrength.color === "green" && "text-green-500"
+                    )}>
+                      {passwordStrength.label}
+                    </span>
+                  </div>
+                  
+                  {/* Password Criteria */}
+                  <div className="space-y-1 text-xs">
+                    <div className={cn("flex items-center gap-2", passwordCriteria.hasLowercase ? "text-green-600" : "text-gray-500")}>
+                      {passwordCriteria.hasLowercase ? (
+                        <CheckCircle2 className="h-3 w-3" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                      <span>Lowercase letter (a-z)</span>
+                    </div>
+                    <div className={cn("flex items-center gap-2", passwordCriteria.hasUppercase ? "text-green-600" : "text-gray-500")}>
+                      {passwordCriteria.hasUppercase ? (
+                        <CheckCircle2 className="h-3 w-3" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                      <span>Uppercase letter (A-Z)</span>
+                    </div>
+                    <div className={cn("flex items-center gap-2", passwordCriteria.hasNumber ? "text-green-600" : "text-gray-500")}>
+                      {passwordCriteria.hasNumber ? (
+                        <CheckCircle2 className="h-3 w-3" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                      <span>Number (0-9)</span>
+                    </div>
+                    <div className={cn("flex items-center gap-2", passwordCriteria.hasSpecialChar ? "text-green-600" : "text-gray-500")}>
+                      {passwordCriteria.hasSpecialChar ? (
+                        <CheckCircle2 className="h-3 w-3" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                      <span>Special character (!@#$%...)</span>
+                    </div>
+                    <div className={cn("flex items-center gap-2", passwordCriteria.hasMinLength ? "text-green-600" : "text-gray-500")}>
+                      {passwordCriteria.hasMinLength ? (
+                        <CheckCircle2 className="h-3 w-3" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                      <span>At least 8 characters</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             
             <div className="space-y-2">
@@ -314,9 +401,27 @@ const ResetPassword = () => {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 disabled={isLoading}
-                minLength={6}
-                className="text-sm sm:text-base"
+                className={cn(
+                  "text-sm sm:text-base",
+                  confirmPassword && password !== confirmPassword && "border-red-500",
+                  confirmPassword && password === confirmPassword && "border-green-500"
+                )}
               />
+              {confirmPassword && (
+                <div className="flex items-center gap-2 text-xs">
+                  {password === confirmPassword ? (
+                    <>
+                      <CheckCircle2 className="h-3 w-3 text-green-600" />
+                      <span className="text-green-600">Passwords match</span>
+                    </>
+                  ) : (
+                    <>
+                      <X className="h-3 w-3 text-red-500" />
+                      <span className="text-red-500">Passwords do not match</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             
             <Button type="submit" className="w-full px-4 py-3 text-sm sm:text-base touch-manipulation" disabled={isLoading}>

@@ -12,8 +12,8 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   userRole: string | null;
-  signUp: (email: string, password: string, username: string, mobile?: string, countryCode?: string) => Promise<{ success: boolean; error?: string }>;
-  signIn: (usernameOrEmail: string, password: string) => Promise<{ success: boolean; error?: string; email?: string }>;
+  signUp: (email: string, password: string, username: string, mobile?: string, countryCode?: string, captchaToken?: string) => Promise<{ success: boolean; error?: string }>;
+  signIn: (usernameOrEmail: string, password: string, captchaToken?: string) => Promise<{ success: boolean; error?: string; email?: string }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   resendVerificationEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
@@ -468,7 +468,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [checkSessionTimeout]);
 
-  const signUp = async (email: string, password: string, username: string, mobile?: string, countryCode?: string): Promise<{ success: boolean; error?: string }> => {
+  const signUp = async (email: string, password: string, username: string, mobile?: string, countryCode?: string, captchaToken?: string): Promise<{ success: boolean; error?: string }> => {
     try {
       setLoading(true);
       
@@ -479,7 +479,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       
       // First, sign up the user with email confirmation required
-      const { data, error } = await supabase.auth.signUp({
+      const signUpOptions: any = {
         email: email.trim(),
         password,
         options: {
@@ -488,9 +488,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             username: username.trim(),
           },
         },
-      });
+      };
+      
+      // Add captcha token if provided
+      if (captchaToken) {
+        signUpOptions.options.captchaToken = captchaToken;
+      }
+      
+      const { data, error } = await supabase.auth.signUp(signUpOptions);
 
       if (error) {
+        // Check if the error is about captcha
+        if (error.message.includes('captcha') || error.message.includes('Captcha') || 
+            error.code === 'captcha_failed' || error.message.includes('sitekey-secret-mismatch')) {
+          return { 
+            success: false, 
+            error: "Captcha verification failed. Please complete the captcha again and try signing up." 
+          };
+        }
         return { success: false, error: error.message };
       }
 
@@ -546,7 +561,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signIn = async (usernameOrEmail: string, password: string): Promise<{ success: boolean; error?: string; email?: string }> => {
+  const signIn = async (usernameOrEmail: string, password: string, captchaToken?: string): Promise<{ success: boolean; error?: string; email?: string }> => {
     try {
       setLoading(true);
       
@@ -614,12 +629,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const signInOptions: any = {
         email,
         password,
-      });
+      };
+      
+      // Add captcha token if provided
+      if (captchaToken) {
+        signInOptions.options = {
+          captchaToken,
+        };
+      }
+      
+      const { data, error } = await supabase.auth.signInWithPassword(signInOptions);
 
       if (error) {
+        // Check if the error is about captcha
+        if (error.message.includes('captcha') || error.message.includes('Captcha') || 
+            error.code === 'captcha_failed' || error.message.includes('sitekey-secret-mismatch')) {
+          return { 
+            success: false, 
+            error: "Captcha verification failed. Please complete the captcha again and try logging in." 
+          };
+        }
+        
         // Check if the error is about email verification
         if (error.message.includes('Email not confirmed') || 
             error.message.toLowerCase().includes('email not confirmed') ||
