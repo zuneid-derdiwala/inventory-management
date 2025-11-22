@@ -319,6 +319,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
   const videoStreamRef = useRef<MediaStream | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isInitializingRef = useRef(false);
+  const shouldStopProcessingRef = useRef(true); // Use ref for synchronous access
 
   // Global error suppression for DOM manipulation errors
   React.useEffect(() => {
@@ -445,6 +446,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
     // Reset OCR processing flags when switching to upload mode
     setOcrProcessingEnabled(false);
     setShouldStopProcessing(true);
+    shouldStopProcessingRef.current = true;
     
     // Clear any pending timeouts
     if (scanTimeout) {
@@ -484,6 +486,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
     // Reset OCR processing flags when switching to camera mode (will be enabled when scanner starts)
     setOcrProcessingEnabled(false);
     setShouldStopProcessing(true);
+    shouldStopProcessingRef.current = true;
     
     // Clear any pending timeouts
     if (scanTimeout) {
@@ -515,8 +518,15 @@ const QrScanner: React.FC<QrScannerProps> = ({
   const captureAndProcessCameraFrame = useCallback(async (): Promise<string | null> => {
     try {
       // Check if OCR processing is enabled and scanner is active
-      if (!ocrProcessingEnabled || !isScannerActive || !isInitialized || emergencyStop || shouldStopProcessing) {
-        console.log("🛑 OCR processing not enabled or scanner not active, skipping");
+      // Use ref for shouldStopProcessing to get current value
+      if (!ocrProcessingEnabled || !isScannerActive || !isInitialized || emergencyStop || shouldStopProcessingRef.current) {
+        console.log("🛑 OCR processing not enabled or scanner not active, skipping", {
+          ocrProcessingEnabled,
+          isScannerActive,
+          isInitialized,
+          emergencyStop,
+          shouldStopProcessing: shouldStopProcessingRef.current
+        });
         return null;
       }
       
@@ -526,7 +536,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
         isScannerActive,
         isInitialized,
         emergencyStop,
-        shouldStopProcessing
+        shouldStopProcessing: shouldStopProcessingRef.current
       });
       
       // Get the video element from the scanner container
@@ -536,14 +546,29 @@ const QrScanner: React.FC<QrScannerProps> = ({
         return null;
       }
       
-      // Find the video element within the scanner
-      const videoElement = container.querySelector('video') as HTMLVideoElement;
-      if (!videoElement || videoElement.readyState < 2) {
-        console.log("Video element not ready for capture");
+      // Find the video element within the scanner (try by ID first, then querySelector)
+      let videoElement = document.getElementById('qr-video') as HTMLVideoElement;
+      if (!videoElement) {
+        videoElement = container.querySelector('video') as HTMLVideoElement;
+      }
+      if (!videoElement) {
+        console.log("❌ Video element not found in container");
+        return null;
+      }
+      // On mobile, check dimensions instead of just readyState
+      // Mobile browsers might have readyState < 2 but video still works
+      if (videoElement.readyState < 2 && (videoElement.videoWidth === 0 || videoElement.videoHeight === 0)) {
+        console.log("⏳ Video element not ready for capture (readyState:", videoElement.readyState, ", dimensions:", videoElement.videoWidth, "x", videoElement.videoHeight, ")");
         return null;
       }
       
-      console.log("📹 [OCR] Camera frame captured, dimensions:", videoElement.videoWidth, "x", videoElement.videoHeight);
+      // If video has no dimensions, it's definitely not ready
+      if (videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+        console.log("⏳ Video element has no dimensions yet");
+        return null;
+      }
+      
+      console.log("📹 [OCR] Camera frame captured, dimensions:", videoElement.videoWidth, "x", videoElement.videoHeight, "(readyState:", videoElement.readyState, ")");
       
       // Create a canvas to capture the current frame
       const canvas = document.createElement('canvas');
@@ -684,49 +709,110 @@ const QrScanner: React.FC<QrScannerProps> = ({
       container.appendChild(video);
       
       // Mobile-optimized camera constraints
+      // Use lower resolution on mobile for better performance
+      const browserInfoForConstraints = getBrowserInfo();
       const constraints = {
         video: {
           facingMode: { ideal: "environment" }, // Back camera
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          frameRate: { ideal: 15, max: 30 }
+          width: browserInfoForConstraints.isMobile ? { ideal: 640, min: 320 } : { ideal: 1280, min: 640 },
+          height: browserInfoForConstraints.isMobile ? { ideal: 480, min: 240 } : { ideal: 720, min: 480 },
+          frameRate: browserInfoForConstraints.isMobile ? { ideal: 10, max: 15 } : { ideal: 15, max: 30 }
         },
         audio: false
       };
       
       // Get camera stream
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      videoStreamRef.current = stream; // Store for cleanup
       video.srcObject = stream;
       
-      // Wait for video to be ready
+      // Mobile-specific: Set autoplay and muted for better mobile compatibility
+      video.autoplay = true;
+      video.muted = true;
+      video.playsInline = true;
+      
+      // Wait for video to be ready (mobile needs more time)
       await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Video initialization timeout'));
+        }, 10000); // 10 second timeout for mobile
+        
         video.onloadedmetadata = () => {
-          video.play().then(resolve).catch(reject);
+          console.log("📹 Video metadata loaded, readyState:", video.readyState);
+          video.play()
+            .then(() => {
+              console.log("✅ Video playback started successfully");
+              clearTimeout(timeout);
+              // Give mobile devices extra time for video to stabilize
+              setTimeout(resolve, 500);
+            })
+            .catch((playError) => {
+              console.log("⚠️ Video play() failed, but continuing:", playError);
+              // On mobile, sometimes play() fails but video still works
+              clearTimeout(timeout);
+              setTimeout(resolve, 500);
+            });
         };
-        video.onerror = reject;
+        video.onerror = (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        };
+        
+        // Fallback: if metadata already loaded
+        if (video.readyState >= 1) {
+          video.play()
+            .then(() => {
+              clearTimeout(timeout);
+              setTimeout(resolve, 500);
+            })
+            .catch(() => {
+              clearTimeout(timeout);
+              setTimeout(resolve, 500);
+            });
+        }
       });
       
       console.log("Direct QR scanner started, beginning OCR processing...");
       setIsInitialized(true);
       setIsScannerActive(true);
       setOcrProcessingEnabled(true);
+      setShouldStopProcessing(false);
+      shouldStopProcessingRef.current = false; // Enable processing - use ref for synchronous access
       
       // Start OCR-based processing loop as primary method
       const processWithOCR = async () => {
+        // Get current video element dynamically (in case it changed)
+        const currentVideo = document.getElementById('qr-video') as HTMLVideoElement || video;
+        
         // Multiple comprehensive checks to prevent auto-start
-        if (!isScannerActive || !isInitialized || emergencyStop || !video || shouldStopProcessing || !ocrProcessingEnabled) {
-          console.log("🛑 Scanner not properly active or processing stopped, stopping OCR processing");
+        // Get current state values dynamically
+        if (!isScannerActive || !isInitialized || emergencyStop || !currentVideo || shouldStopProcessingRef.current || !ocrProcessingEnabled) {
+          console.log("🛑 Scanner not properly active or processing stopped, stopping OCR processing", {
+            isScannerActive,
+            isInitialized,
+            emergencyStop,
+            hasVideo: !!currentVideo,
+            shouldStopProcessing: shouldStopProcessingRef.current,
+            ocrProcessingEnabled
+          });
           return;
         }
         
         // Additional check for video readiness
-        if (video.readyState < 2) {
-          console.log("🔄 Video not ready, waiting...");
-          // Only continue if scanner is still active
-          if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessing && ocrProcessingEnabled) {
-            setTimeout(processWithOCR, 100);
+        // Mobile browsers might have readyState < 2, but video can still work
+        // Check if video has valid dimensions instead
+        if (currentVideo.readyState < 2) {
+          console.log("🔄 Video not ready, waiting... (readyState:", currentVideo.readyState, ")");
+          // On mobile, wait longer and check dimensions
+          if (currentVideo.videoWidth === 0 || currentVideo.videoHeight === 0) {
+            // Only continue if scanner is still active
+            if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessingRef.current && ocrProcessingEnabled) {
+              setTimeout(processWithOCR, 200); // Longer wait for mobile
+            }
+            return;
           }
-          return;
+          // If video has dimensions, it's probably ready even if readyState < 2
+          console.log("📹 Video has dimensions, proceeding despite readyState < 2");
         }
         
         try {
@@ -741,11 +827,11 @@ const QrScanner: React.FC<QrScannerProps> = ({
           }
           
           // Set canvas size to match video
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+          canvas.width = currentVideo.videoWidth;
+          canvas.height = currentVideo.videoHeight;
           
           // Draw the current video frame to canvas
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          ctx.drawImage(currentVideo, 0, 0, canvas.width, canvas.height);
           
           console.log("🔬 Camera frame captured, applying same processing pipeline as upload mode...");
           
@@ -862,25 +948,74 @@ const QrScanner: React.FC<QrScannerProps> = ({
           console.log("Advanced processing did not find valid IMEI in camera frame");
           
           // Continue processing only if scanner is still active
-          if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessing && ocrProcessingEnabled) {
-            setTimeout(processWithOCR, 1000); // Process every 1 second for better responsiveness
+          // On mobile, process less frequently to avoid performance issues
+          const browserInfo = getBrowserInfo();
+          const processingInterval = browserInfo.isMobile ? 2000 : 1000; // 2 seconds on mobile, 1 second on desktop
+          
+          if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessingRef.current && ocrProcessingEnabled) {
+            setTimeout(processWithOCR, processingInterval);
           }
         } catch (error) {
           console.log("❌ OCR processing error:", error);
           // Retry only if scanner is still active
-          if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessing && ocrProcessingEnabled) {
-            setTimeout(processWithOCR, 3000); // Retry after 3 seconds on error
+          // On mobile, wait longer before retry
+          const browserInfo = getBrowserInfo();
+          const retryDelay = browserInfo.isMobile ? 4000 : 3000;
+          
+          if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessingRef.current && ocrProcessingEnabled) {
+            setTimeout(processWithOCR, retryDelay);
           }
         }
       };
       
-      // Start the processing loop only if scanner is properly initialized
-      if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessing) {
-        setShouldStopProcessing(false); // Enable processing only when scanner is started
-        setTimeout(processWithOCR, 1000); // Start after 1 second to let camera initialize
-      } else {
-        console.log("🛑 Scanner not properly initialized, skipping OCR processing start");
-      }
+      // Start the processing loop - states are already set above
+      // Use a delay to ensure video is ready and states are updated
+      // Mobile devices need more time for camera initialization
+      const browserInfo = getBrowserInfo();
+      const delay = browserInfo.isMobile ? 2500 : 1500; // Longer delay for mobile
+      
+      // Store video reference to ensure it's accessible in closure
+      const videoRef = video;
+      setTimeout(() => {
+        // Get current video element (might have changed)
+        const currentVideo = document.getElementById('qr-video') as HTMLVideoElement || videoRef;
+        
+        // Double-check states before starting - use refs for current values
+        if (isScannerActive && isInitialized && !emergencyStop && currentVideo && !shouldStopProcessingRef.current && ocrProcessingEnabled) {
+          // On mobile, also check if video has valid dimensions
+          if (browserInfo.isMobile && (currentVideo.videoWidth === 0 || currentVideo.videoHeight === 0)) {
+            console.log("⏳ Mobile video not ready yet, waiting another second...");
+            setTimeout(() => {
+              if (isScannerActive && isInitialized && !emergencyStop && currentVideo && !shouldStopProcessingRef.current && ocrProcessingEnabled) {
+                console.log("✅ Starting OCR processing loop (mobile)...");
+                processWithOCR();
+              }
+            }, 1000);
+            return;
+          }
+          
+          console.log("✅ Starting OCR processing loop...", {
+            isScannerActive,
+            isInitialized,
+            emergencyStop,
+            hasVideo: !!currentVideo,
+            videoDimensions: `${currentVideo.videoWidth}x${currentVideo.videoHeight}`,
+            shouldStopProcessing: shouldStopProcessingRef.current,
+            ocrProcessingEnabled,
+            isMobile: browserInfo.isMobile
+          });
+          processWithOCR();
+        } else {
+          console.log("🛑 Scanner not properly initialized, skipping OCR processing start", {
+            isScannerActive,
+            isInitialized,
+            emergencyStop,
+            hasVideo: !!currentVideo,
+            shouldStopProcessing: shouldStopProcessingRef.current,
+            ocrProcessingEnabled
+          });
+        }
+      }, delay); // Longer delay for mobile devices
       
     } catch (error: any) {
       console.error("Direct QR scanner initialization error:", error);
@@ -935,6 +1070,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
       setIsInitialized(false);
       setOcrProcessingEnabled(false);
       setShouldStopProcessing(true);
+    shouldStopProcessingRef.current = true;
       
       // Stop video stream
       const video = document.getElementById('qr-video') as HTMLVideoElement;
@@ -1717,72 +1853,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
       await startDirectQRScanner();
       
       console.log("✅ Direct scanner started successfully");
-      console.log("🔬 [OCR] Enabling OCR processing for camera frames...");
-      setIsInitialized(true);
-      setIsScannerActive(true);
+      console.log("🔬 [OCR] OCR processing is enabled in startDirectQRScanner - no need for duplicate loop");
+      // States are already set in startDirectQRScanner, no need to set them again here
       setIsInitializing(false);
-      // Enable OCR processing for camera frames (same as image upload mode)
-      setOcrProcessingEnabled(true);
-      setShouldStopProcessing(false);
-      console.log("✅ [OCR] OCR processing is now ENABLED and ready");
-      
-      // Start continuous OCR processing loop (same pipeline as image upload)
-      // This runs in parallel with barcode scanning to catch text-only IMEIs
-      const startContinuousOCR = async () => {
-        console.log("🔬 [OCR] Starting continuous OCR processing loop (same as image upload)...");
-        let ocrAttemptCount = 0;
-        const maxOcrAttempts = 50; // Process up to 50 frames (about 5 seconds at 1 frame/second)
-        
-        const processFrame = async () => {
-          // Check if we should continue processing
-          if (!isScannerActive || !isInitialized || emergencyStop || shouldStopProcessing || !ocrProcessingEnabled) {
-            console.log("🛑 [OCR] Stopping continuous OCR processing");
-        return;
-      }
-      
-          // Limit number of attempts to prevent infinite loops
-          if (ocrAttemptCount >= maxOcrAttempts) {
-            console.log("🛑 [OCR] Reached max OCR attempts, stopping continuous processing");
-            return;
-          }
-          
-          ocrAttemptCount++;
-          
-          try {
-            // Use the same processing pipeline as image upload
-              const ocrResult = await captureAndProcessCameraFrame();
-              if (ocrResult) {
-              console.log("✅ [OCR] Continuous OCR found IMEI:", ocrResult);
-                onScanSuccess(ocrResult);
-                
-              // Stop scanner after successful OCR detection
-              await stopNativeVideo();
-              return; // Stop processing
-            }
-            
-            // Continue processing next frame after a delay
-            if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessing && ocrProcessingEnabled) {
-              setTimeout(processFrame, 1000); // Process every 1 second
-            }
-          } catch (error) {
-            console.log("❌ [OCR] Continuous OCR processing error:", error);
-            // Continue processing even on error
-            if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessing && ocrProcessingEnabled) {
-              setTimeout(processFrame, 1000);
-            }
-          }
-        };
-        
-        // Start processing after a short delay to let camera stabilize
-        setTimeout(() => {
-          if (isScannerActive && isInitialized && !emergencyStop && !shouldStopProcessing && ocrProcessingEnabled) {
-            processFrame();
-          }
-        }, 2000); // Wait 2 seconds for camera to stabilize
-      };
-      
-      // Start continuous OCR processing
-      startContinuousOCR();
       
       // Set a timeout to stop scanning after 30 seconds if no QR code is found
       const timeout = setTimeout(async () => {
@@ -1916,6 +1989,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
     return () => {
       // Stop all processing immediately
       setShouldStopProcessing(true);
+    shouldStopProcessingRef.current = true;
       setOcrProcessingEnabled(false);
       setIsScannerActive(false);
       setIsInitialized(false);
@@ -2232,6 +2306,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
                 setIsInitializing(false);
                 setOcrProcessingEnabled(false);
                 setShouldStopProcessing(true);
+    shouldStopProcessingRef.current = true;
                 setHasError(false);
                 setErrorMessage("");
                 setErrorCount(0);
@@ -2269,6 +2344,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
                   setIsInitializing(false);
                   setOcrProcessingEnabled(false);
                   setShouldStopProcessing(false);
+      shouldStopProcessingRef.current = false;
                   setErrorCount(0);
                   setLastErrorTime(0);
                   // Clear any pending timeouts
