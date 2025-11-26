@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useData } from "@/context/DataContext";
 import { useAuth } from "@/context/AuthContext";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, ChevronRight, Edit, Trash2 } from "lucide-react";
@@ -18,15 +19,42 @@ const StockData = () => {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   
-  // Initialize state from localStorage or defaults
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return localStorage.getItem('stockData_selectedModel') || "all";
+  // Initialize state from localStorage or defaults - now using arrays for multi-select
+  const [selectedModels, setSelectedModels] = useState<string[]>(() => {
+    const stored = localStorage.getItem('stockData_selectedModels');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
   });
-  const [selectedBrand, setSelectedBrand] = useState<string>(() => {
-    return localStorage.getItem('stockData_selectedBrand') || "all";
+  const [selectedBrands, setSelectedBrands] = useState<string[]>(() => {
+    const stored = localStorage.getItem('stockData_selectedBrands');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
   });
-  const [selectedBookingPerson, setSelectedBookingPerson] = useState<string>(() => {
-    return localStorage.getItem('stockData_selectedBookingPerson') || "all";
+  const [selectedBookingPersons, setSelectedBookingPersons] = useState<string[]>(() => {
+    const stored = localStorage.getItem('stockData_selectedBookingPersons');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
   });
   
   
@@ -53,12 +81,12 @@ const StockData = () => {
     
     if (lastVisitedPage && lastVisitedPage !== currentPage) {
       // User has navigated away and returned, clear filters
-      setSelectedModel("all");
-      setSelectedBrand("all");
-      setSelectedBookingPerson("all");
-      localStorage.removeItem('stockData_selectedModel');
-      localStorage.removeItem('stockData_selectedBrand');
-      localStorage.removeItem('stockData_selectedBookingPerson');
+      setSelectedModels([]);
+      setSelectedBrands([]);
+      setSelectedBookingPersons([]);
+      localStorage.removeItem('stockData_selectedModels');
+      localStorage.removeItem('stockData_selectedBrands');
+      localStorage.removeItem('stockData_selectedBookingPersons');
     }
     
     // Update the last visited page
@@ -67,16 +95,16 @@ const StockData = () => {
 
   // Save filter state to localStorage whenever it changes
   useEffect(() => {
-    localStorage.setItem('stockData_selectedModel', selectedModel);
-  }, [selectedModel]);
+    localStorage.setItem('stockData_selectedModels', JSON.stringify(selectedModels));
+  }, [selectedModels]);
 
   useEffect(() => {
-    localStorage.setItem('stockData_selectedBrand', selectedBrand);
-  }, [selectedBrand]);
+    localStorage.setItem('stockData_selectedBrands', JSON.stringify(selectedBrands));
+  }, [selectedBrands]);
 
   useEffect(() => {
-    localStorage.setItem('stockData_selectedBookingPerson', selectedBookingPerson);
-  }, [selectedBookingPerson]);
+    localStorage.setItem('stockData_selectedBookingPersons', JSON.stringify(selectedBookingPersons));
+  }, [selectedBookingPersons]);
 
 
 
@@ -93,24 +121,24 @@ const StockData = () => {
         return false;
       }
 
-      // Check model filter
-      if (selectedModel !== "all" && entry.model !== selectedModel) {
+      // Check model filter - if any models selected, entry must match one of them
+      if (selectedModels.length > 0 && !selectedModels.includes(entry.model)) {
         return false;
       }
 
-      // Check brand filter
-      if (selectedBrand !== "all" && entry.brand !== selectedBrand) {
+      // Check brand filter - if any brands selected, entry must match one of them
+      if (selectedBrands.length > 0 && (!entry.brand || !selectedBrands.includes(entry.brand))) {
         return false;
       }
 
-      // Check booking person filter
-      if (selectedBookingPerson !== "all" && entry.bookingPerson !== selectedBookingPerson) {
+      // Check booking person filter - if any booking persons selected, entry must match one of them
+      if (selectedBookingPersons.length > 0 && (!entry.bookingPerson || !selectedBookingPersons.includes(entry.bookingPerson))) {
         return false;
       }
 
       return true;
     });
-  }, [dataSource, selectedModel, selectedBrand, selectedBookingPerson]);
+  }, [dataSource, selectedModels, selectedBrands, selectedBookingPersons]);
 
   // Debug the filtered entries
   useEffect(() => {
@@ -190,12 +218,12 @@ const StockData = () => {
   const filteredStock = displayItems;
 
   // Get unique options for filters from DataContext (all available brands/models)
-  // Filter models based on selected brand
+  // Filter models based on selected brands
   const filteredModels = useMemo(() => {
     const allModels = new Set<string>();
     
-    if (selectedBrand === "all") {
-      // If no brand selected, show all models from DataContext (all available models)
+    if (selectedBrands.length === 0) {
+      // If no brands selected, show all models from DataContext (all available models)
       // Get all models from all brands
       availableBrands.forEach(brand => {
         const modelsForBrand = getModelsByBrand(brand);
@@ -206,36 +234,38 @@ const StockData = () => {
         if (entry.model) allModels.add(entry.model);
       });
     } else {
-      // If brand selected, show models for that brand from DataContext
-      const modelsForBrand = getModelsByBrand(selectedBrand);
-      modelsForBrand.forEach(model => allModels.add(model));
+      // If brands selected, show models for those brands from DataContext
+      selectedBrands.forEach(brand => {
+        const modelsForBrand = getModelsByBrand(brand);
+        modelsForBrand.forEach(model => allModels.add(model));
+      });
       
-      // Also include models from entries that match the selected brand
+      // Also include models from entries that match the selected brands
       // This ensures models in entries are visible even if not in the models table
       dataSource.forEach(entry => {
-        if (entry.brand === selectedBrand && entry.model) {
+        if (entry.brand && selectedBrands.includes(entry.brand) && entry.model) {
           allModels.add(entry.model);
         }
       });
     }
     
     return Array.from(allModels).sort();
-  }, [dataSource, selectedBrand, getModelsByBrand, availableBrands]);
+  }, [dataSource, selectedBrands, getModelsByBrand, availableBrands]);
 
-  // Filter brands based on selected model
+  // Filter brands based on selected models
   const filteredBrands = useMemo(() => {
-    if (selectedModel === "all") {
-      // If no model selected, show all brands from DataContext
+    if (selectedModels.length === 0) {
+      // If no models selected, show all brands from DataContext
       return availableBrands;
     } else {
-      // If model selected, show only brands that have this model
+      // If models selected, show only brands that have at least one of these models
       const brandsWithModel = availableBrands.filter(brand => {
         const modelsForBrand = getModelsByBrand(brand);
-        return modelsForBrand.includes(selectedModel);
+        return selectedModels.some(model => modelsForBrand.includes(model));
       });
       return brandsWithModel;
     }
-  }, [availableBrands, selectedModel, getModelsByBrand]);
+  }, [availableBrands, selectedModels, getModelsByBrand]);
 
   // Get booking persons from DataContext (all available) and also from entries
   const availableBookingPersons = useMemo(() => {
@@ -250,53 +280,58 @@ const StockData = () => {
     return result;
   }, [dataSource, allBookingPersons]);
 
-  // Validate stored filters when data is loaded
+  // Validate stored filters when data is loaded - remove invalid selections
   useEffect(() => {
-    if (filteredModels.length > 0 && filteredBrands.length > 0) {
-      // Check if stored model is still valid
-      if (selectedModel !== "all" && !filteredModels.includes(selectedModel)) {
-        // Don't clear, just keep the selection - it will show "no items found" which is correct
-      }
-      
-      // Check if stored brand is still valid
-      if (selectedBrand !== "all" && !filteredBrands.includes(selectedBrand)) {
-        // Don't clear, just keep the selection - it will show "no items found" which is correct
+    if (filteredModels.length > 0) {
+      // Remove any selected models that are no longer available
+      const validModels = selectedModels.filter(model => filteredModels.includes(model));
+      if (validModels.length !== selectedModels.length) {
+        setSelectedModels(validModels);
       }
     }
-  }, [filteredModels, filteredBrands, selectedModel, selectedBrand]);
+    
+    if (filteredBrands.length > 0) {
+      // Remove any selected brands that are no longer available
+      const validBrands = selectedBrands.filter(brand => filteredBrands.includes(brand));
+      if (validBrands.length !== selectedBrands.length) {
+        setSelectedBrands(validBrands);
+      }
+    }
+  }, [filteredModels, filteredBrands, selectedModels, selectedBrands]);
 
-  // Clear model selection when brand changes (only when data is loaded)
+  // Update model selection when brands change - filter out models that don't match selected brands
   useEffect(() => {
-    if (selectedBrand !== "all" && filteredModels.length > 0) {
-      // Check if the currently selected model is available for the selected brand
-      const isModelAvailable = filteredModels.includes(selectedModel);
-      if (!isModelAvailable && selectedModel !== "all") {
-        setSelectedModel("all");
-        localStorage.setItem('stockData_selectedModel', 'all');
+    if (selectedBrands.length > 0 && filteredModels.length > 0) {
+      // Keep only models that belong to the selected brands
+      const validModels = selectedModels.filter(model => filteredModels.includes(model));
+      if (validModels.length !== selectedModels.length) {
+        setSelectedModels(validModels);
       }
     }
-  }, [selectedBrand, filteredModels, selectedModel]);
+  }, [selectedBrands, filteredModels, selectedModels]);
 
-  // Clear brand selection when model changes (only when data is loaded)
+  // Update brand selection when models change - filter out brands that don't have selected models
   useEffect(() => {
-    if (selectedModel !== "all" && filteredBrands.length > 0) {
-      // Check if the currently selected brand is available for the selected model
-      const isBrandAvailable = filteredBrands.includes(selectedBrand);
-      if (!isBrandAvailable && selectedBrand !== "all") {
-        setSelectedBrand("all");
-        localStorage.setItem('stockData_selectedBrand', 'all');
+    if (selectedModels.length > 0 && filteredBrands.length > 0) {
+      // Keep only brands that have at least one of the selected models
+      const validBrands = selectedBrands.filter(brand => {
+        const modelsForBrand = getModelsByBrand(brand);
+        return selectedModels.some(model => modelsForBrand.includes(model));
+      });
+      if (validBrands.length !== selectedBrands.length) {
+        setSelectedBrands(validBrands);
       }
     }
-  }, [selectedModel, filteredBrands, selectedBrand]);
+  }, [selectedModels, filteredBrands, selectedBrands, getModelsByBrand]);
 
   const clearFilters = () => {
-    setSelectedModel("all");
-    setSelectedBrand("all");
-    setSelectedBookingPerson("all");
+    setSelectedModels([]);
+    setSelectedBrands([]);
+    setSelectedBookingPersons([]);
     // Clear localStorage as well
-    localStorage.removeItem('stockData_selectedModel');
-    localStorage.removeItem('stockData_selectedBrand');
-    localStorage.removeItem('stockData_selectedBookingPerson');
+    localStorage.removeItem('stockData_selectedModels');
+    localStorage.removeItem('stockData_selectedBrands');
+    localStorage.removeItem('stockData_selectedBookingPersons');
   };
 
   const handleEdit = (imei: string) => {
@@ -424,48 +459,48 @@ const StockData = () => {
               <div className="grid gap-2">
                 <Label htmlFor="brand-filter">
                   Filter by Brand
-                  {selectedModel !== "all" && (
+                  {selectedModels.length > 0 && (
                     <span className="text-sm text-muted-foreground ml-2">
-                      (filtered by {selectedModel})
+                      (filtered by {selectedModels.length} model{selectedModels.length > 1 ? 's' : ''})
                     </span>
                   )}
                 </Label>
-                <SearchableSelect
-                  value={selectedBrand}
-                  onValueChange={setSelectedBrand}
+                <MultiSelect
+                  value={selectedBrands}
+                  onValueChange={setSelectedBrands}
                   options={filteredBrands}
-                  placeholder={selectedModel !== "all" ? `Select brand for ${selectedModel}` : "Select brand"}
+                  placeholder={selectedModels.length > 0 ? `Select brands for selected models` : "Select brands"}
                   searchPlaceholder="Search brands..."
-                  emptyText={selectedModel !== "all" ? `No brands found for ${selectedModel}` : "No brands found."}
+                  emptyText={selectedModels.length > 0 ? `No brands found for selected models` : "No brands found."}
                 />
               </div>
 
               <div className="grid gap-2">
                 <Label htmlFor="model-filter">
                   Filter by Model
-                  {selectedBrand !== "all" && (
+                  {selectedBrands.length > 0 && (
                     <span className="text-sm text-muted-foreground ml-2">
-                      (filtered by {selectedBrand})
+                      (filtered by {selectedBrands.length} brand{selectedBrands.length > 1 ? 's' : ''})
                     </span>
                   )}
                 </Label>
-                <SearchableSelect
-                  value={selectedModel}
-                  onValueChange={setSelectedModel}
+                <MultiSelect
+                  value={selectedModels}
+                  onValueChange={setSelectedModels}
                   options={filteredModels}
-                  placeholder={selectedBrand !== "all" ? `Select model for ${selectedBrand}` : "Select model"}
+                  placeholder={selectedBrands.length > 0 ? `Select models for selected brands` : "Select models"}
                   searchPlaceholder="Search models..."
-                  emptyText={selectedBrand !== "all" ? `No models found for ${selectedBrand}` : "No models found."}
+                  emptyText={selectedBrands.length > 0 ? `No models found for selected brands` : "No models found."}
                 />
               </div>
 
               <div className="grid gap-2">
                 <Label htmlFor="username-filter">Filter by Booking Person</Label>
-                <SearchableSelect
-                  value={selectedBookingPerson}
-                  onValueChange={setSelectedBookingPerson}
+                <MultiSelect
+                  value={selectedBookingPersons}
+                  onValueChange={setSelectedBookingPersons}
                   options={availableBookingPersons}
-                  placeholder="Select booking person"
+                  placeholder="Select booking persons"
                   searchPlaceholder="Search booking persons..."
                   emptyText="No booking persons found."
                 />
@@ -476,7 +511,7 @@ const StockData = () => {
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xl font-semibold">Inventory Details</h3>
-              {(selectedModel !== "all" || selectedBrand !== "all" || selectedBookingPerson !== "all") && (
+              {(selectedModels.length > 0 || selectedBrands.length > 0 || selectedBookingPersons.length > 0) && (
                 <div className="text-sm text-muted-foreground">
                   Showing {filteredStock.length} items
                 </div>

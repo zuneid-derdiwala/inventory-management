@@ -11,18 +11,17 @@ import { useData } from "@/context/DataContext";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Edit, Trash2, Search } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
+import { Edit, Trash2, X } from "lucide-react";
 import { Separator } from "@/components/ui/separator"; // Import Separator
 import DataImporter from "@/components/DataImporter"; // Import DataImporter
 import DataExporter from "@/components/DataExporter"; // Import DataExporter
 import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
 import { supabase } from "@/lib/supabase";
 import { EntryData } from "@/context/DataContext";
+import { MultiSelect } from "@/components/ui/multi-select";
 
 const Database = () => {
-  const { database, deleteEntry, availableBrands, availableModels, availableBookingPersons, isLoadingData } = useData();
+  const { database, deleteEntry, availableBrands, availableModels, availableBookingPersons, isLoadingData, getModelsByBrand } = useData();
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
 
@@ -30,25 +29,110 @@ const Database = () => {
   const [allData, setAllData] = useState<EntryData[]>([]);
   const [isLoadingAllData, setIsLoadingAllData] = useState(false);
 
-  // States for input fields
-  const [searchQuery1, setSearchQuery1] = useState("");
-  const [searchQuery2, setSearchQuery2] = useState("");
-  const [searchQuery3, setSearchQuery3] = useState("");
+  // Multi-select states for IMEI, Outward Date, Brand, Model, Booking Person, and Buyer
+  const [selectedIMEIs, setSelectedIMEIs] = useState<string[]>(() => {
+    const stored = localStorage.getItem('database_selectedIMEIs');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [selectedOutwardDates, setSelectedOutwardDates] = useState<string[]>(() => {
+    const stored = localStorage.getItem('database_selectedOutwardDates');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [selectedBrands, setSelectedBrands] = useState<string[]>(() => {
+    const stored = localStorage.getItem('database_selectedBrands');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [selectedModels, setSelectedModels] = useState<string[]>(() => {
+    const stored = localStorage.getItem('database_selectedModels');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [selectedBookingPersons, setSelectedBookingPersons] = useState<string[]>(() => {
+    const stored = localStorage.getItem('database_selectedBookingPersons');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [selectedBuyers, setSelectedBuyers] = useState<string[]>(() => {
+    const stored = localStorage.getItem('database_selectedBuyers');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
 
-  // States for active search queries (used for filtering after button click)
-  const [activeSearchQuery1, setActiveSearchQuery1] = useState("");
-  const [activeSearchQuery2, setActiveSearchQuery2] = useState("");
-  const [activeSearchQuery3, setActiveSearchQuery3] = useState("");
-
-  // States for popover open/close
-  const [open1, setOpen1] = useState(false);
-  const [open2, setOpen2] = useState(false);
-  const [open3, setOpen3] = useState(false);
 
   // Track page navigation
   useEffect(() => {
     localStorage.setItem('lastVisitedPage', 'database');
   }, []);
+
+  // Save multi-select filter state to localStorage
+  useEffect(() => {
+    localStorage.setItem('database_selectedBrands', JSON.stringify(selectedBrands));
+  }, [selectedBrands]);
+
+  useEffect(() => {
+    localStorage.setItem('database_selectedModels', JSON.stringify(selectedModels));
+  }, [selectedModels]);
+
+  useEffect(() => {
+    localStorage.setItem('database_selectedBookingPersons', JSON.stringify(selectedBookingPersons));
+  }, [selectedBookingPersons]);
+
+  useEffect(() => {
+    localStorage.setItem('database_selectedBuyers', JSON.stringify(selectedBuyers));
+  }, [selectedBuyers]);
+
+  useEffect(() => {
+    localStorage.setItem('database_selectedIMEIs', JSON.stringify(selectedIMEIs));
+  }, [selectedIMEIs]);
+
+  useEffect(() => {
+    localStorage.setItem('database_selectedOutwardDates', JSON.stringify(selectedOutwardDates));
+  }, [selectedOutwardDates]);
 
   // Fetch all data for admin users
   useEffect(() => {
@@ -153,40 +237,115 @@ const Database = () => {
   }, [isAdmin]);
 
 
-  const handleSearch = () => {
-    setActiveSearchQuery1(searchQuery1);
-    setActiveSearchQuery2(searchQuery2);
-    setActiveSearchQuery3(searchQuery3);
+
+  // Clear all filters
+  const clearFilters = () => {
+    // Clear multi-select filters
+    setSelectedIMEIs([]);
+    setSelectedOutwardDates([]);
+    setSelectedBrands([]);
+    setSelectedModels([]);
+    setSelectedBookingPersons([]);
+    setSelectedBuyers([]);
+    
+    // Clear localStorage
+    localStorage.removeItem('database_selectedIMEIs');
+    localStorage.removeItem('database_selectedOutwardDates');
+    localStorage.removeItem('database_selectedBrands');
+    localStorage.removeItem('database_selectedModels');
+    localStorage.removeItem('database_selectedBookingPersons');
+    localStorage.removeItem('database_selectedBuyers');
   };
 
   // Use appropriate data source based on user role
   const dataSource = isAdmin ? allData : database;
 
+  // Get all available models from all brands
+  const allAvailableModels = useMemo(() => {
+    const modelsSet = new Set<string>();
+    availableBrands.forEach(brand => {
+      const modelsForBrand = getModelsByBrand(brand);
+      modelsForBrand.forEach(model => modelsSet.add(model));
+    });
+    // Also include models from entries
+    dataSource.forEach(entry => {
+      if (entry.model) modelsSet.add(entry.model);
+    });
+    return Array.from(modelsSet).sort();
+  }, [availableBrands, getModelsByBrand, dataSource]);
+
+  // Filter models based on selected brands
+  const filteredModels = useMemo(() => {
+    if (selectedBrands.length === 0) {
+      return allAvailableModels;
+    }
+    const modelsSet = new Set<string>();
+    selectedBrands.forEach(brand => {
+      const modelsForBrand = getModelsByBrand(brand);
+      modelsForBrand.forEach(model => modelsSet.add(model));
+    });
+    // Also include models from entries that match selected brands
+    dataSource.forEach(entry => {
+      if (entry.brand && selectedBrands.includes(entry.brand) && entry.model) {
+        modelsSet.add(entry.model);
+      }
+    });
+    return Array.from(modelsSet).sort();
+  }, [selectedBrands, getModelsByBrand, dataSource, allAvailableModels]);
+
+  // Filter brands based on selected models
+  const filteredBrands = useMemo(() => {
+    if (selectedModels.length === 0) {
+      return availableBrands;
+    }
+    return availableBrands.filter(brand => {
+      const modelsForBrand = getModelsByBrand(brand);
+      return selectedModels.some(model => modelsForBrand.includes(model));
+    });
+  }, [availableBrands, selectedModels, getModelsByBrand]);
+
+  // Get all available buyers from data
+  const availableBuyers = useMemo(() => {
+    const buyersSet = new Set<string>();
+    dataSource.forEach(entry => {
+      if (entry.buyer) buyersSet.add(entry.buyer);
+    });
+    return Array.from(buyersSet).sort();
+  }, [dataSource]);
+
   const filteredData = dataSource.filter(entry => {
-    const q1 = activeSearchQuery1.toLowerCase();
-    const q2 = activeSearchQuery2.toLowerCase();
-    const q3 = activeSearchQuery3.toLowerCase();
+    // IMEI filter (multi-select)
+    const matchesIMEI = selectedIMEIs.length === 0 || 
+      (entry.imei && selectedIMEIs.includes(entry.imei));
 
-    const matchesQ1 = q1 === "" ||
-      entry.imei.toLowerCase().includes(q1) ||
-      (entry.inwardDate && format(entry.inwardDate, "dd/MM/yyyy").toLowerCase().includes(q1)) ||
-      (entry.outwardDate && format(entry.outwardDate, "dd/MM/yyyy").toLowerCase().includes(q1));
+    // Outward Date filter (multi-select) - matches outward date only
+    const matchesOutwardDate = selectedOutwardDates.length === 0 || 
+      (entry.outwardDate && selectedOutwardDates.includes(format(entry.outwardDate, "dd/MM/yyyy")));
 
-    const matchesQ2 = q2 === "" ||
-      (entry.brand && entry.brand.toLowerCase().includes(q2)) ||
-      (entry.model && entry.model.toLowerCase().includes(q2));
+    // Brand filter (multi-select)
+    const matchesBrand = selectedBrands.length === 0 || 
+      (entry.brand && selectedBrands.includes(entry.brand));
 
-    const matchesQ3 = q3 === "" ||
-      (entry.bookingPerson && entry.bookingPerson.toLowerCase().includes(q3)) ||
-      (entry.buyer && entry.buyer.toLowerCase().includes(q3));
+    // Model filter (multi-select)
+    const matchesModel = selectedModels.length === 0 || 
+      (entry.model && selectedModels.includes(entry.model));
 
-    // An entry matches if it satisfies all non-empty search queries
-    // If all queries are empty, all entries are shown.
-    if (q1 === "" && q2 === "" && q3 === "") {
+    // Booking Person filter (multi-select)
+    const matchesBookingPerson = selectedBookingPersons.length === 0 || 
+      (entry.bookingPerson && selectedBookingPersons.includes(entry.bookingPerson));
+
+    // Buyer filter (multi-select)
+    const matchesBuyer = selectedBuyers.length === 0 || 
+      (entry.buyer && selectedBuyers.includes(entry.buyer));
+
+    // An entry matches if it satisfies all filters
+    // If all filters are empty, all entries are shown.
+    if (selectedIMEIs.length === 0 && selectedOutwardDates.length === 0 && selectedBrands.length === 0 && 
+        selectedModels.length === 0 && selectedBookingPersons.length === 0 && selectedBuyers.length === 0) {
       return true;
     }
 
-    return matchesQ1 && matchesQ2 && matchesQ3;
+    return matchesIMEI && matchesOutwardDate && matchesBrand && matchesModel && matchesBookingPerson && matchesBuyer;
   });
 
   // Calculate summary based on user role
@@ -251,56 +410,33 @@ const Database = () => {
     }
   };
 
-  // --- Suggestion Generation ---
+  // --- Available Options for Multi-Select ---
 
-  const imeiDateSuggestions = useMemo(() => {
-    const suggestions = new Set<string>();
+  // IMEI options
+  const availableIMEIs = useMemo(() => {
+    const imeis = new Set<string>();
     dataSource.forEach(entry => {
-      if (entry.imei) suggestions.add(String(entry.imei));
-      if (entry.inwardDate) {
-        try {
-          const dateStr = format(entry.inwardDate, "dd/MM/yyyy");
-          if (dateStr) suggestions.add(dateStr);
-        } catch (e) {
-          // Invalid date, skip
-        }
-      }
+      if (entry.imei) imeis.add(String(entry.imei));
+    });
+    return Array.from(imeis).sort();
+  }, [dataSource]);
+
+  // Outward Date options (only outward dates)
+  const availableOutwardDates = useMemo(() => {
+    const dates = new Set<string>();
+    dataSource.forEach(entry => {
       if (entry.outwardDate) {
         try {
           const dateStr = format(entry.outwardDate, "dd/MM/yyyy");
-          if (dateStr) suggestions.add(dateStr);
+          if (dateStr) dates.add(dateStr);
         } catch (e) {
           // Invalid date, skip
         }
       }
     });
-    const query = searchQuery1.toLowerCase();
-    return Array.from(suggestions).filter(s => typeof s === 'string' && s.toLowerCase().includes(query)).sort();
-  }, [dataSource, searchQuery1]);
+    return Array.from(dates).sort();
+  }, [dataSource]);
 
-  const brandModelSuggestions = useMemo(() => {
-    const suggestions = new Set<string>();
-    availableBrands.forEach(brand => {
-      if (brand) suggestions.add(String(brand));
-    });
-    Object.values(availableModels).flat().forEach(model => {
-      if (model) suggestions.add(String(model));
-    });
-    const query = searchQuery2.toLowerCase();
-    return Array.from(suggestions).filter(s => typeof s === 'string' && s.toLowerCase().includes(query)).sort();
-  }, [availableBrands, availableModels, searchQuery2]);
-
-  const bookingPersonBuyerSuggestions = useMemo(() => {
-    const suggestions = new Set<string>();
-    availableBookingPersons.forEach(person => {
-      if (person) suggestions.add(String(person));
-    });
-    dataSource.forEach(entry => {
-      if (entry.buyer) suggestions.add(String(entry.buyer));
-    });
-    const query = searchQuery3.toLowerCase();
-    return Array.from(suggestions).filter(s => typeof s === 'string' && s.toLowerCase().includes(query)).sort();
-  }, [dataSource, availableBookingPersons, searchQuery3]);
 
   if (isLoadingData || (isAdmin && isLoadingAllData)) {
     return (
@@ -426,116 +562,93 @@ const Database = () => {
               <div className="text-xs sm:text-sm text-blue-700">Total Items</div>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="search1">Search by IMEI, Date</Label>
-              <Popover open={open1} onOpenChange={setOpen1}>
-                <PopoverTrigger asChild>
-                  <Input
-                    id="search1"
-                    value={searchQuery1}
-                    onChange={(e) => {
-                      setSearchQuery1(e.target.value);
-                      setOpen1(true);
-                    }}
-                    placeholder="Enter IMEI or Date (e.g., 01/01/2023)"
-                  />
-                </PopoverTrigger>
-                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-                  <Command>
-                    <CommandInput placeholder="Search suggestions..." value={searchQuery1} onValueChange={setSearchQuery1} />
-                    <CommandEmpty>No suggestions found.</CommandEmpty>
-                    <CommandGroup>
-                      {imeiDateSuggestions.map((suggestion) => (
-                        <CommandItem
-                          key={suggestion}
-                          onSelect={() => {
-                            setSearchQuery1(suggestion);
-                            setOpen1(false);
-                          }}
-                        >
-                          {suggestion}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <Label htmlFor="imei-filter">Filter by IMEI</Label>
+              <MultiSelect
+                value={selectedIMEIs}
+                onValueChange={setSelectedIMEIs}
+                options={availableIMEIs}
+                placeholder="Select IMEIs"
+                searchPlaceholder="Search IMEIs..."
+                emptyText="No IMEIs found."
+              />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="search2">Search by Brand, Model</Label>
-              <Popover open={open2} onOpenChange={setOpen2}>
-                <PopoverTrigger asChild>
-                  <Input
-                    id="search2"
-                    value={searchQuery2}
-                    onChange={(e) => {
-                      setSearchQuery2(e.target.value);
-                      setOpen2(true);
-                    }}
-                    placeholder="Enter Brand or Model"
-                  />
-                </PopoverTrigger>
-                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-                  <Command>
-                    <CommandInput placeholder="Search suggestions..." value={searchQuery2} onValueChange={setSearchQuery2} />
-                    <CommandEmpty>No suggestions found.</CommandEmpty>
-                    <CommandGroup>
-                      {brandModelSuggestions.map((suggestion) => (
-                        <CommandItem
-                          key={suggestion}
-                          onSelect={() => {
-                            setSearchQuery2(suggestion);
-                            setOpen2(false);
-                          }}
-                        >
-                          {suggestion}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <Label htmlFor="outward-date-filter">Filter by Outward Date</Label>
+              <MultiSelect
+                value={selectedOutwardDates}
+                onValueChange={setSelectedOutwardDates}
+                options={availableOutwardDates}
+                placeholder="Select Outward Dates"
+                searchPlaceholder="Search dates..."
+                emptyText="No outward dates found."
+              />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="search3">Search by Booking Person, Buyer</Label>
-              <Popover open={open3} onOpenChange={setOpen3}>
-                <PopoverTrigger asChild>
-                  <Input
-                    id="search3"
-                    value={searchQuery3}
-                    onChange={(e) => {
-                      setSearchQuery3(e.target.value);
-                      setOpen3(true);
-                    }}
-                    placeholder="Enter Booking Person or Buyer"
-                  />
-                </PopoverTrigger>
-                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-                  <Command>
-                    <CommandInput placeholder="Search suggestions..." value={searchQuery3} onValueChange={setSearchQuery3} />
-                    <CommandEmpty>No suggestions found.</CommandEmpty>
-                    <CommandGroup>
-                      {bookingPersonBuyerSuggestions.map((suggestion) => (
-                        <CommandItem
-                          key={suggestion}
-                          onSelect={() => {
-                            setSearchQuery3(suggestion);
-                            setOpen3(false);
-                          }}
-                        >
-                          {suggestion}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <Label htmlFor="brand-filter">
+                Filter by Brand
+                {selectedModels.length > 0 && (
+                  <span className="text-sm text-muted-foreground ml-2">
+                    (filtered by {selectedModels.length} model{selectedModels.length > 1 ? 's' : ''})
+                  </span>
+                )}
+              </Label>
+              <MultiSelect
+                value={selectedBrands}
+                onValueChange={setSelectedBrands}
+                options={filteredBrands}
+                placeholder={selectedModels.length > 0 ? `Select brands for selected models` : "Select brands"}
+                searchPlaceholder="Search brands..."
+                emptyText={selectedModels.length > 0 ? `No brands found for selected models` : "No brands found."}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="model-filter">
+                Filter by Model
+                {selectedBrands.length > 0 && (
+                  <span className="text-sm text-muted-foreground ml-2">
+                    (filtered by {selectedBrands.length} brand{selectedBrands.length > 1 ? 's' : ''})
+                  </span>
+                )}
+              </Label>
+              <MultiSelect
+                value={selectedModels}
+                onValueChange={setSelectedModels}
+                options={filteredModels}
+                placeholder={selectedBrands.length > 0 ? `Select models for selected brands` : "Select models"}
+                searchPlaceholder="Search models..."
+                emptyText={selectedBrands.length > 0 ? `No models found for selected brands` : "No models found."}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="booking-person-filter">Filter by Booking Person</Label>
+              <MultiSelect
+                value={selectedBookingPersons}
+                onValueChange={setSelectedBookingPersons}
+                options={availableBookingPersons}
+                placeholder="Select booking persons"
+                searchPlaceholder="Search booking persons..."
+                emptyText="No booking persons found."
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="buyer-filter">Filter by Buyer</Label>
+              <MultiSelect
+                value={selectedBuyers}
+                onValueChange={setSelectedBuyers}
+                options={availableBuyers}
+                placeholder="Select buyers"
+                searchPlaceholder="Search buyers..."
+                emptyText="No buyers found."
+              />
             </div>
           </div>
-          <Button onClick={handleSearch} className="w-full md:w-auto">
-            <Search className="mr-2 h-4 w-4" /> Search
-          </Button>
+          <div className="flex justify-end">
+            <Button onClick={clearFilters} variant="outline" className="w-full md:w-auto">
+              <X className="mr-2 h-4 w-4" /> Clear Filters
+            </Button>
+          </div>
 
           {/* Data Import/Export Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 mt-4 justify-center"> {/* Changed gap-2 to gap-4 */}

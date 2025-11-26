@@ -39,7 +39,7 @@ export function SearchableSelect({
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false);
 
-  const displayValue = value === "all" ? `All ${placeholder.split(' ')[0]}s` : value;
+  const displayValue = value === "all" || value === "" ? placeholder : value;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
