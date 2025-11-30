@@ -81,6 +81,7 @@ const Navbar = () => {
     { name: "Entry Form", path: "/entry-form" },
     { name: "Stock Data", path: "/stock-data" },
     { name: "Manage Data", path: "/manage-data" },
+    { name: "Manage Booking Persons", path: "/manage-booking-persons" },
     ...(isAdmin ? [{ name: "Database", path: "/database" }] : []),
   ];
 

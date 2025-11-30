@@ -30,17 +30,12 @@ const ManageDataPage = () => {
     addSeller,
     updateSeller,
     deleteSeller,
-    availableBookingPersons,
-    addBookingPerson,
-    updateBookingPerson,
-    deleteBookingPerson,
     resetAllData,
     isLoadingData,
     fetchEntries,
     fetchBrands,
     fetchModels,
     fetchSellers,
-    fetchBookingPersons,
   } = useData();
   const { isAdmin } = useAuth();
 
@@ -57,14 +52,9 @@ const ManageDataPage = () => {
   const [editSellerName, setEditSellerName] = useState("");
   const [sellerToEdit, setSellerToEdit] = useState<string | null>(null);
 
-  const [newBookingPersonName, setNewBookingPersonName] = useState("");
-  const [editBookingPersonName, setEditBookingPersonName] = useState("");
-  const [bookingPersonToEdit, setBookingPersonToEdit] = useState<string | null>(null);
-
   const [isBrandsOpen, setIsBrandsOpen] = useState(true);
   const [isModelsOpen, setIsModelsOpen] = useState(true);
   const [isSellersOpen, setIsSellersOpen] = useState(true);
-  const [isBookingPersonsOpen, setIsBookingPersonsOpen] = useState(true);
 
   // Track page navigation
   useEffect(() => {
@@ -129,23 +119,6 @@ const ManageDataPage = () => {
 
   const handleDeleteSeller = async (seller: string) => {
     await deleteSeller(seller);
-  };
-
-  const handleAddBookingPerson = async () => {
-    if (await addBookingPerson(newBookingPersonName)) {
-      setNewBookingPersonName("");
-    }
-  };
-
-  const handleUpdateBookingPerson = async () => {
-    if (bookingPersonToEdit && await updateBookingPerson(bookingPersonToEdit, editBookingPersonName)) {
-      setBookingPersonToEdit(null);
-      setEditBookingPersonName("");
-    }
-  };
-
-  const handleDeleteBookingPerson = async (person: string) => {
-    await deleteBookingPerson(person);
   };
 
   // Removed handleAssignExistingData as it's no longer relevant without user_id
@@ -505,105 +478,6 @@ const ManageDataPage = () => {
             </CollapsibleContent>
           </Collapsible>
 
-          <Separator className="my-6" />
-
-          {/* Manage Booking Persons Section */}
-          <Collapsible open={isBookingPersonsOpen} onOpenChange={setIsBookingPersonsOpen} className="w-full">
-            <CollapsibleTrigger className="flex items-center justify-between w-full py-2 text-xl font-semibold mb-2 [&[data-state=open]>svg]:rotate-180">
-              <h3>Manage Booking Persons</h3>
-              <ChevronDown className="h-5 w-5 transition-transform duration-200" />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="grid gap-4 p-4 border rounded-md">
-              <div className="flex gap-2">
-                <Input
-                  id="newBookingPersonName"
-                  value={newBookingPersonName}
-                  onChange={(e) => setNewBookingPersonName(e.target.value)}
-                  placeholder="New Booking Person Name"
-                  className="flex-grow"
-                />
-                <Button onClick={handleAddBookingPerson} disabled={!newBookingPersonName.trim()}>
-                  <PlusCircle className="h-4 w-4 mr-2" /> Add Booking Person
-                </Button>
-              </div>
-
-              <div className="mt-4">
-                <h4 className="text-lg font-medium mb-2">Existing Booking Persons:</h4>
-                {availableBookingPersons.length > 0 ? (
-                  <ul className="grid gap-2">
-                    {availableBookingPersons.map((person) => (
-                      <li key={person} className="flex justify-between items-center p-2 border rounded-md">
-                        <span className="font-medium">{person}</span>
-                        <div className="flex gap-2">
-                          <AlertDialog open={bookingPersonToEdit === person} onOpenChange={(open) => {
-                            if (!open) {
-                              setBookingPersonToEdit(null);
-                              setEditBookingPersonName("");
-                            }
-                          }}>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="outline" size="icon" onClick={() => {
-                                setBookingPersonToEdit(person);
-                                setEditBookingPersonName(person);
-                              }}>
-                                <Edit className="h-4 w-4" />
-                                <span className="sr-only">Edit Booking Person</span>
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Edit Booking Person Name</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Enter the new name for the booking person '{person}'.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <Input
-                                id="editBookingPersonName"
-                                value={editBookingPersonName}
-                                onChange={(e) => setEditBookingPersonName(e.target.value)}
-                                placeholder="New Booking Person Name"
-                                className="mt-4"
-                              />
-                               <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={handleUpdateBookingPerson} disabled={!editBookingPersonName.trim()}>Update</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-
-                          {isAdmin && (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="destructive" size="icon">
-                                  <Trash2 className="h-4 w-4" />
-                                  <span className="sr-only">Delete Booking Person</span>
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This action cannot be undone. This will permanently delete the booking person '{person}'.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDeleteBookingPerson(person)}>Delete</AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-muted-foreground">No booking persons added yet.</p>
-                )}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-
           {isAdmin && (
             <>
               <Separator className="my-6" />
@@ -619,7 +493,7 @@ const ManageDataPage = () => {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete ALL inventory data, brands, models, sellers, and booking persons.
+                        This action cannot be undone. This will permanently delete ALL inventory data, brands, models, and sellers.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

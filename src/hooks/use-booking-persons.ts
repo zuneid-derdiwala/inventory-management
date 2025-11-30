@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { showError, showSuccess } from "@/utils/toast";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/AuthContext";
 
 const TABLE_NAME = "booking_persons";
 
@@ -12,6 +13,7 @@ export interface BookingPerson {
 }
 
 export function useBookingPersons() {
+  const { user } = useAuth();
   const [availableBookingPersons, setAvailableBookingPersons] = useState<BookingPerson[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetched, setHasFetched] = useState(false);
@@ -21,11 +23,24 @@ export function useBookingPersons() {
     
     // Check if supabase is properly configured
     if (typeof supabase === 'object' && 'from' in supabase) {
-      // Get booking persons filtered by is_deleted = false (visible to everyone, no user_id restriction)
-      let query = supabase.from(TABLE_NAME).select("id, name");
+      // Require user to be logged in
+      if (!user?.id) {
+        console.warn("User not logged in, cannot fetch booking persons");
+        setAvailableBookingPersons([]);
+        setIsLoading(false);
+        setHasFetched(true);
+        return;
+      }
+      
+      // Get booking persons filtered by is_deleted = false and user_id
+      // ALL users (including admins) only see their own booking persons
+      let query = supabase.from(TABLE_NAME).select("id, name, user_id");
       
       // Only show non-deleted booking persons
       query = query.eq('is_deleted', false);
+      
+      // ALWAYS filter by user_id - no admin exception
+      query = query.eq('user_id', user.id);
       
       const response: any = await query.order("name", { ascending: true });
 
@@ -56,7 +71,7 @@ export function useBookingPersons() {
     }
     setIsLoading(false);
     setHasFetched(true);
-  }, []); // Remove user dependency - fetch for everyone
+  }, [user?.id]); // Fetch based on user only - no admin exception
 
   useEffect(() => {
     // Only fetch on initial mount, not on tab/route changes
@@ -73,18 +88,30 @@ export function useBookingPersons() {
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
+      if (!user?.id) {
+        showError("You must be logged in to add booking persons.");
+        return null;
+      }
+      
       // First, fetch all booking persons (including deleted) to check for case-insensitive matches
-      const { data: allBookingPersons, error: fetchError } = await supabase
+      // ALL users only see their own booking persons
+      let allBookingPersonsQuery = supabase
         .from(TABLE_NAME)
-        .select('id, name, is_deleted');
+        .select('id, name, is_deleted, user_id')
+        .eq('user_id', user.id);
+      
+      const { data: allBookingPersons, error: fetchError } = await allBookingPersonsQuery;
       
       if (fetchError) {
         console.error("Error fetching booking persons:", fetchError);
       }
       
       // Find deleted booking person using case-insensitive comparison
+      // Only restore if it belongs to the current user
       const deletedPerson = allBookingPersons?.find(
-        bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && bp.is_deleted === true
+        bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && 
+             bp.is_deleted === true &&
+             bp.user_id === user.id
       );
       
       if (deletedPerson) {
@@ -111,8 +138,11 @@ export function useBookingPersons() {
       }
       
       // Check if booking person already exists (non-deleted, case-insensitive comparison)
+      // Only check within user's own booking persons
       const existingPerson = allBookingPersons?.find(
-        bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && bp.is_deleted === false
+        bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && 
+             bp.is_deleted === false &&
+             bp.user_id === user.id
       );
       
       if (existingPerson) {
@@ -120,11 +150,17 @@ export function useBookingPersons() {
         return { id: existingPerson.id, name: existingPerson.name };
       }
       
-      // Booking person doesn't exist, insert it with created_at
+      // Booking person doesn't exist, insert it with created_at and user_id
+      if (!user?.id) {
+        showError("You must be logged in to add booking persons.");
+        return null;
+      }
+      
       const { data, error: upsertError } = await supabase
         .from(TABLE_NAME)
         .insert({ 
           name: trimmedPerson, 
+          user_id: user.id,
           created_at: new Date().toISOString(),
           is_deleted: false
         })
@@ -139,13 +175,17 @@ export function useBookingPersons() {
         
         if (isDuplicateError) {
           // Fetch all booking persons to find case-insensitive match
+          // Only check user's own booking persons
           const { data: allBookingPersonsCheck } = await supabase
             .from(TABLE_NAME)
-            .select('id, name, is_deleted');
+            .select('id, name, is_deleted, user_id')
+            .eq('user_id', user.id);
           
-          // Find deleted booking person (case-insensitive)
+          // Find deleted booking person (case-insensitive) that belongs to current user
           const deletedPersonCheck = allBookingPersonsCheck?.find(
-            bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && bp.is_deleted === true
+            bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && 
+                 bp.is_deleted === true &&
+                 bp.user_id === user.id
           );
           
           if (deletedPersonCheck) {
@@ -164,9 +204,11 @@ export function useBookingPersons() {
             }
           }
           
-          // Find existing non-deleted booking person (case-insensitive)
+          // Find existing non-deleted booking person (case-insensitive) that belongs to current user
           const existingPersonCheck = allBookingPersonsCheck?.find(
-            bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && bp.is_deleted === false
+            bp => bp.name.toLowerCase() === trimmedPerson.toLowerCase() && 
+                 bp.is_deleted === false &&
+                 bp.user_id === user.id
           );
           
           if (existingPersonCheck) {
@@ -220,6 +262,24 @@ export function useBookingPersons() {
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
+      // Verify the booking person belongs to the user (all users, including admins)
+      if (!user?.id) {
+        showError("You must be logged in to update booking persons.");
+        return false;
+      }
+      
+      // Verify the booking person belongs to the user
+      const { data: bookingPersonData } = await supabase
+        .from(TABLE_NAME)
+        .select('user_id')
+        .eq('id', bookingPersonId)
+        .single();
+      
+      if (bookingPersonData?.user_id !== user.id) {
+        showError("You don't have permission to update this booking person.");
+        return false;
+      }
+      
       const { error: updateError } = await supabase.from(TABLE_NAME).update({ name: trimmedNewPerson }).eq("id", bookingPersonId);
 
       if (updateError) {
@@ -249,6 +309,24 @@ export function useBookingPersons() {
     }
 
     if (typeof supabase === 'object' && 'from' in supabase && (supabase as any).url !== "YOUR_SUPABASE_URL") {
+      // Verify the booking person belongs to the user (all users, including admins)
+      if (!user?.id) {
+        showError("You must be logged in to delete booking persons.");
+        return false;
+      }
+      
+      // Verify the booking person belongs to the user
+      const { data: bookingPersonData } = await supabase
+        .from(TABLE_NAME)
+        .select('user_id')
+        .eq('id', bookingPersonId)
+        .single();
+      
+      if (bookingPersonData?.user_id !== user.id) {
+        showError("You don't have permission to delete this booking person.");
+        return false;
+      }
+      
       // Soft delete: set is_deleted = true instead of actually deleting
       const { error: deleteError } = await supabase
         .from(TABLE_NAME)

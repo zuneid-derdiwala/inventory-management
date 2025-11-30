@@ -10,6 +10,7 @@ import EntryForm from "./pages/EntryForm";
 import StockData from "./pages/StockData";
 import Database from "./pages/Database";
 import ManageDataPage from "./pages/ManageData";
+import ManageBookingPersonsPage from "./pages/ManageBookingPersons";
 import ProfileSettings from "./pages/ProfileSettings";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -82,6 +83,13 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <ManageDataPage />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/manage-booking-persons" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <ManageBookingPersonsPage />
                   </Layout>
                 </ProtectedRoute>
               } />
