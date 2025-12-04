@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -51,62 +50,62 @@ const ManageUsers = () => {
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   // Fetch all users (admin only)
-  useEffect(() => {
-    const fetchUsers = async () => {
-      if (!isAdmin) {
-        setIsLoading(false);
-        return;
-      }
+  const fetchUsers = useCallback(async () => {
+    if (!isAdmin) {
+      setIsLoading(false);
+      return;
+    }
 
-      setIsLoading(true);
-      try {
-        // Try RPC function first (recommended for admin access)
-        console.log('Attempting to fetch users via RPC function...');
-        const { data: rpcData, error: rpcError } = await supabase.rpc('get_all_profiles');
+    setIsLoading(true);
+    try {
+      // Try RPC function first (recommended for admin access)
+      console.log('Attempting to fetch users via RPC function...');
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_all_profiles');
+      
+      if (rpcError) {
+        console.error('RPC function error:', rpcError);
         
-        if (rpcError) {
-          console.error('RPC function error:', rpcError);
-          
-          // If RPC function doesn't exist, try direct query
-          if (rpcError.code === '42883' || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
-            console.log('RPC function not found, trying direct query...');
-            const { data, error } = await supabase
-              .from('profiles')
-              .select('id, email, username, avatar_url, role, created_at, is_active')
-              .order('created_at', { ascending: false });
+        // If RPC function doesn't exist, try direct query
+        if (rpcError.code === '42883' || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
+          console.log('RPC function not found, trying direct query...');
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('id, email, username, avatar_url, role, created_at, is_active')
+            .order('created_at', { ascending: false });
 
-            if (error) {
-              console.error('Direct query error:', error);
-              if (error.code === '42501' || error.message.includes('row-level security')) {
-                showError('Unable to fetch users. Please run the SQL script "supabase_get_all_profiles_function.sql" in your Supabase dashboard to set up the admin function.');
-              } else {
-                showError('Failed to fetch users: ' + error.message);
-              }
-              setUsers([]);
+          if (error) {
+            console.error('Direct query error:', error);
+            if (error.code === '42501' || error.message.includes('row-level security')) {
+              showError('Unable to fetch users. Please run the SQL script "supabase_get_all_profiles_function.sql" in your Supabase dashboard to set up the admin function.');
             } else {
-              console.log('Fetched users via direct query:', data?.length || 0);
-              setUsers(data || []);
+              showError('Failed to fetch users: ' + error.message);
             }
-          } else {
-            showError('Unable to fetch users: ' + rpcError.message);
-            console.error('RPC error details:', rpcError);
             setUsers([]);
+          } else {
+            console.log('Fetched users via direct query:', data?.length || 0);
+            setUsers(data || []);
           }
         } else {
-          console.log('Fetched users via RPC function:', rpcData?.length || 0);
-          setUsers(rpcData || []);
+          showError('Unable to fetch users: ' + rpcError.message);
+          console.error('RPC error details:', rpcError);
+          setUsers([]);
         }
-      } catch (error) {
-        console.error('Error fetching users:', error);
-        showError('An unexpected error occurred while fetching users');
-        setUsers([]);
-      } finally {
-        setIsLoading(false);
+      } else {
+        console.log('Fetched users via RPC function:', rpcData?.length || 0);
+        setUsers(rpcData || []);
       }
-    };
-
-    fetchUsers();
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      showError('An unexpected error occurred while fetching users');
+      setUsers([]);
+    } finally {
+      setIsLoading(false);
+    }
   }, [isAdmin]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   const handleResetPassword = async (userEmail: string) => {
     setIsResettingPassword(userEmail);
@@ -209,29 +208,46 @@ const ManageUsers = () => {
     const loadingToastId = showLoading('Updating user...');
     
     try {
-      const updateData: any = {
-        avatar_url: avatarUrl.trim() || null,
-        role: selectedRole,
-      };
+      // Try RPC function first (bypasses RLS)
+      const { error: rpcError } = await supabase.rpc('update_user_profile', {
+        target_user_id: editingUser.id,
+        new_avatar_url: avatarUrl.trim() || null,
+        new_role: selectedRole
+      });
 
-      const { error } = await supabase
-        .from('profiles')
-        .update(updateData)
-        .eq('id', editingUser.id);
+      if (rpcError) {
+        console.error('RPC function error:', rpcError);
+        
+        // If RPC function doesn't exist, try direct update
+        if (rpcError.code === '42883' || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
+          console.log('RPC function not found, trying direct update...');
+          const { error } = await supabase
+            .from('profiles')
+            .update({
+              avatar_url: avatarUrl.trim() || null,
+              role: selectedRole
+            })
+            .eq('id', editingUser.id);
 
-      if (error) {
-        showError('Failed to update user: ' + error.message);
-      } else {
-        showSuccess('User updated successfully');
-        // Update local state
-        setUsers(users.map(u => 
-          u.id === editingUser.id 
-            ? { ...u, avatar_url: avatarUrl.trim() || null, role: selectedRole }
-            : u
-        ));
-        // Close dialog and reset state
-        handleCloseDialog();
+          if (error) {
+            if (error.code === '42501' || error.message.includes('row-level security')) {
+              showError('Unable to update user. Please run "supabase_update_user_profile_function.sql" in your Supabase dashboard to set up admin update permissions.');
+            } else {
+              showError('Failed to update user: ' + error.message);
+            }
+            return;
+          }
+        } else {
+          showError('Failed to update user: ' + rpcError.message);
+          return;
+        }
       }
+
+      showSuccess('User updated successfully');
+      // Refetch users to get the latest data from database
+      await fetchUsers();
+      // Close dialog and reset state
+      handleCloseDialog();
     } catch (error) {
       console.error('Error updating user:', error);
       showError('An unexpected error occurred while updating user');
@@ -280,12 +296,8 @@ const ManageUsers = () => {
       }
 
       showSuccess(`User ${userEmail} has been deactivated. They can no longer log in, but their data is preserved.`);
-      // Update local state
-      setUsers(users.map(u => 
-        u.id === userId 
-          ? { ...u, is_active: false }
-          : u
-      ));
+      // Refetch users to get the latest data from database
+      await fetchUsers();
     } catch (error) {
       console.error('Error deactivating user:', error);
       showError('An unexpected error occurred while deactivating user');
@@ -331,12 +343,8 @@ const ManageUsers = () => {
       }
 
       showSuccess(`User ${userEmail} has been activated.`);
-      // Update local state
-      setUsers(users.map(u => 
-        u.id === userId 
-          ? { ...u, is_active: true }
-          : u
-      ));
+      // Refetch users to get the latest data from database
+      await fetchUsers();
     } catch (error) {
       console.error('Error activating user:', error);
       showError('An unexpected error occurred while activating user');
@@ -480,7 +488,7 @@ const ManageUsers = () => {
                                     <Label>Avatar</Label>
                                     <div className="flex items-center gap-4">
                                       <div className="relative">
-                                        <Avatar className="h-20 w-20">
+                                        <Avatar className="h-24 w-24">
                                           <AvatarImage src={avatarUrl} alt="Preview" />
                                           <AvatarFallback>
                                             {getUserInitials(user)}
@@ -488,10 +496,10 @@ const ManageUsers = () => {
                                         </Avatar>
                                         <label
                                           htmlFor={`avatar-upload-${user.id}`}
-                                          className="absolute bottom-0 right-0 bg-primary text-primary-foreground rounded-full p-1.5 cursor-pointer hover:bg-primary/90 transition-colors"
+                                          className="absolute bottom-0 right-0 bg-primary text-primary-foreground rounded-full p-2 cursor-pointer hover:bg-primary/90 transition-colors shadow-lg"
                                           title="Upload avatar"
                                         >
-                                          <Camera className="h-3 w-3" />
+                                          <Camera className="h-4 w-4" />
                                           <input
                                             id={`avatar-upload-${user.id}`}
                                             type="file"
@@ -503,21 +511,20 @@ const ManageUsers = () => {
                                         </label>
                                       </div>
                                       <div className="flex-1">
-                                        <Label htmlFor="avatarUrl">Avatar URL</Label>
-                                        <div className="flex gap-2">
-                                          <Input
-                                            id="avatarUrl"
-                                            value={avatarUrl}
-                                            onChange={(e) => setAvatarUrl(e.target.value)}
-                                            placeholder="https://example.com/avatar.jpg"
-                                            disabled={isUploading}
-                                          />
-                                        </div>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          Click the camera icon to upload or paste a URL
+                                        <p className="text-sm font-medium mb-2">Upload Profile Picture</p>
+                                        <p className="text-xs text-muted-foreground mb-2">
+                                          Click the camera icon to upload a new profile picture
                                         </p>
                                         {isUploading && (
-                                          <p className="text-xs text-blue-600 mt-1">Uploading...</p>
+                                          <div className="flex items-center gap-2 text-xs text-blue-600">
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                            <span>Uploading...</span>
+                                          </div>
+                                        )}
+                                        {avatarUrl && !isUploading && (
+                                          <p className="text-xs text-green-600 mt-1">
+                                            ✓ Avatar ready to save
+                                          </p>
                                         )}
                                       </div>
                                     </div>
