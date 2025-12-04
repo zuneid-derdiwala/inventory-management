@@ -685,8 +685,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         };
       }
 
-      // Ensure profile exists for the user
+      // Check if user account is active
       if (data.user) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('is_active')
+          .eq('id', data.user.id)
+          .maybeSingle();
+
+        if (!profileError && profileData && profileData.is_active === false) {
+          // Sign out the user since account is inactive
+          await supabase.auth.signOut();
+          return { 
+            success: false, 
+            error: "Your account has been deactivated. Please contact an administrator for assistance."
+          };
+        }
+
+        // Ensure profile exists for the user
         await ensureProfileExists(data.user.id, data.user.email);
       }
 

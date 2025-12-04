@@ -11,6 +11,7 @@ import StockData from "./pages/StockData";
 import Database from "./pages/Database";
 import ManageDataPage from "./pages/ManageData";
 import ManageBookingPersonsPage from "./pages/ManageBookingPersons";
+import ManageUsers from "./pages/ManageUsers";
 import ProfileSettings from "./pages/ProfileSettings";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -22,6 +23,7 @@ import { DataProvider } from "@/context/DataContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AdminRoute from "./components/AdminRoute";
 import PasswordResetRedirect from "./components/PasswordResetRedirect";
 
 const queryClient = new QueryClient();
@@ -77,6 +79,15 @@ const App = () => (
                   <Layout>
                     <Database />
                   </Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/manage-users" element={
+                <ProtectedRoute>
+                  <AdminRoute>
+                    <Layout>
+                      <ManageUsers />
+                    </Layout>
+                  </AdminRoute>
                 </ProtectedRoute>
               } />
               <Route path="/manage-data" element={
