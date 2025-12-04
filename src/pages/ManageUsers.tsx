@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Edit, KeyRound, Loader2, Camera, Trash2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -136,6 +136,12 @@ const ManageUsers = () => {
     setSelectedRole(user.role || "user");
   };
 
+  const handleCloseDialog = () => {
+    setEditingUser(null);
+    setAvatarUrl("");
+    setSelectedRole("user");
+  };
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>, userId: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -223,9 +229,8 @@ const ManageUsers = () => {
             ? { ...u, avatar_url: avatarUrl.trim() || null, role: selectedRole }
             : u
         ));
-        setEditingUser(null);
-        setAvatarUrl("");
-        setSelectedRole("user");
+        // Close dialog and reset state
+        handleCloseDialog();
       }
     } catch (error) {
       console.error('Error updating user:', error);
@@ -447,7 +452,11 @@ const ManageUsers = () => {
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             {user.is_active !== false ? (
-                              <Dialog>
+                              <Dialog open={editingUser?.id === user.id} onOpenChange={(open) => {
+                                if (!open) {
+                                  handleCloseDialog();
+                                }
+                              }}>
                                 <DialogTrigger asChild>
                                   <Button
                                     variant="outline"
@@ -536,17 +545,15 @@ const ManageUsers = () => {
                                   </div>
                                 </div>
                                 <DialogFooter>
-                                  <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                      setEditingUser(null);
-                                      setAvatarUrl("");
-                                      setSelectedRole("user");
-                                    }}
-                                    disabled={isSaving || isUploading}
-                                  >
-                                    Cancel
-                                  </Button>
+                                  <DialogClose asChild>
+                                    <Button
+                                      variant="outline"
+                                      onClick={handleCloseDialog}
+                                      disabled={isSaving || isUploading}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </DialogClose>
                                   <Button
                                     onClick={handleSaveUser}
                                     disabled={isSaving || isUploading}
