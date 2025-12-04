@@ -527,43 +527,43 @@ const Index = () => {
               </Card>
             </div>
 
-            {/* Top Booking Persons for User */}
+            {/* Most Purchased Mobile for User */}
             <Card className="border-2 shadow-lg">
-              <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950 dark:to-purple-950 border-b p-3 sm:p-6">
+              <CardHeader className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950 dark:to-teal-950 border-b p-3 sm:p-6">
                 <CardTitle className="flex items-center gap-2 sm:gap-3 text-base sm:text-lg">
-                  <div className="p-1.5 sm:p-2 bg-indigo-500 rounded-lg">
-                    <Users className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  <div className="p-1.5 sm:p-2 bg-emerald-500 rounded-lg">
+                    <Smartphone className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                   </div>
-                  <span className="break-words">Top Mobiles Booked</span>
+                  <span className="break-words">Most Purchased Mobile</span>
                 </CardTitle>
-                <CardDescription className="mt-1 sm:mt-2 text-xs sm:text-sm">My most active booking persons</CardDescription>
+                <CardDescription className="mt-1 sm:mt-2 text-xs sm:text-sm">My most purchased mobile brands</CardDescription>
               </CardHeader>
               <CardContent className="pt-4 sm:pt-6 p-3 sm:p-6">
-                {analytics.topBookingPersons.length > 0 ? (
+                {analytics.topBrands.length > 0 ? (
                   <div className="space-y-2 sm:space-y-4">
-                    {analytics.topBookingPersons.map((person, index) => (
-                      <div key={person.name} className="flex items-center justify-between p-2 sm:p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                    {analytics.topBrands.map((brand, index) => (
+                      <div key={brand.name} className="flex items-center justify-between p-2 sm:p-3 rounded-lg hover:bg-muted/50 transition-colors">
                         <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                           <div className={`flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full text-xs sm:text-sm font-bold text-white flex-shrink-0 ${
                             index === 0 ? 'bg-gradient-to-br from-yellow-400 to-orange-500' :
                             index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
                             index === 2 ? 'bg-gradient-to-br from-amber-600 to-amber-800' :
-                            'bg-gradient-to-br from-indigo-500 to-purple-600'
+                            'bg-gradient-to-br from-emerald-500 to-teal-600'
                           } shadow-md`}>
                             {index + 1}
                           </div>
-                          <span className="font-semibold text-sm sm:text-base truncate">{person.name}</span>
+                          <span className="font-semibold text-sm sm:text-base truncate">{brand.name}</span>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-xs sm:text-sm font-medium bg-primary/10 px-2 sm:px-3 py-1 rounded-full whitespace-nowrap">{person.count} mobiles</span>
+                          <span className="text-xs sm:text-sm font-medium bg-primary/10 px-2 sm:px-3 py-1 rounded-full whitespace-nowrap">{brand.count} mobiles</span>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="text-center py-6 sm:py-8">
-                    <Users className="h-10 w-10 sm:h-12 sm:w-12 mx-auto text-muted-foreground mb-3 opacity-50" />
-                    <p className="text-xs sm:text-sm text-muted-foreground">No booking data available</p>
+                    <Smartphone className="h-10 w-10 sm:h-12 sm:w-12 mx-auto text-muted-foreground mb-3 opacity-50" />
+                    <p className="text-xs sm:text-sm text-muted-foreground">No purchase data available</p>
                   </div>
                 )}
               </CardContent>
