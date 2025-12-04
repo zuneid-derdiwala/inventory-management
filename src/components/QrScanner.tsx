@@ -431,7 +431,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
   const [isInitializing, setIsInitializing] = useState(false);
   const [emergencyStop, setEmergencyStop] = useState(false);
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
-  const [qrScanMode, setQrScanMode] = useState<'barcode' | 'qr'>('barcode');
+  // Removed qrScanMode - only using OCR scanner now
   const [ocrProcessingEnabled, setOcrProcessingEnabled] = useState(false);
   const [shouldStopProcessing, setShouldStopProcessing] = useState(true);
   
@@ -509,8 +509,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
     
     // Reset the upload alert flag when switching modes
     
-    // Reset QR scan mode to default
-    setQrScanMode('barcode');
+    // Scanner mode reset (OCR only)
     
     console.log("Camera mode activated - ready for camera initialization");
   }, [scanTimeout]);
@@ -1228,7 +1227,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
             return;
           }
         } catch (retryError) {
-          errorMessage = "Camera access failed. Please try the Barcode Scanner mode instead.";
+          errorMessage = "Camera access failed. Please check your camera permissions and try again.";
         }
       } else {
         errorMessage = `Failed to start direct QR scanner: ${error.message || error.name}`;
@@ -2136,21 +2135,9 @@ const QrScanner: React.FC<QrScannerProps> = ({
         }
       }
 
-      // Try appropriate scanner based on mode
-      console.log("Scanner mode:", qrScanMode);
-      if (qrScanMode === 'qr') {
-        console.log("Attempting direct QR scanner initialization...");
-        try {
-          await startDirectQRScanner();
-        } catch (directError) {
-          console.error("Direct QR scanner failed, falling back to barcode scanner:", directError);
-          console.log("Falling back to barcode scanner for better mobile compatibility...");
+      // Using OCR scanner (only option)
+      console.log("Initializing OCR scanner...");
       await initializeScannerDirect();
-        }
-      } else {
-        console.log("Attempting barcode scanner initialization...");
-        await initializeScannerDirect();
-      }
       
     } catch (error) {
       console.error("Scanner initialization error:", error);
@@ -2159,7 +2146,7 @@ const QrScanner: React.FC<QrScannerProps> = ({
     } finally {
       isInitializingRef.current = false;
     }
-  }, [onScanSuccess, onScanError, qrCodeContainerId, hasError, isInitialized, checkCameraPermission, requestCameraPermission, getBrowserInfo, waitForContainer, initializeScannerDirect, qrScanMode, startDirectQRScanner]);
+  }, [onScanSuccess, onScanError, qrCodeContainerId, hasError, isInitialized, checkCameraPermission, requestCameraPermission, getBrowserInfo, waitForContainer, initializeScannerDirect, startDirectQRScanner]);
 
   // Camera will only start when user explicitly clicks the camera button
 
@@ -2321,79 +2308,6 @@ const QrScanner: React.FC<QrScannerProps> = ({
   return (
     <ScannerErrorBoundary>
       <div className="w-full">
-        {/* Scanner Mode Selector for Camera - Mobile Responsive */}
-        {scanMode === 'camera' && (
-          <div className="mb-4 p-3 sm:p-4 bg-muted rounded-lg">
-            <label className="text-sm sm:text-base font-medium mb-3 block">Scanner Type:</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                onClick={async () => {
-                  setQrScanMode('barcode');
-                  if (isInitialized) {
-                    // Stop current scanner
-                    await stopNativeVideo();
-                    setIsInitialized(false);
-                    setIsScannerActive(false);
-                    // Restart scanner with new mode
-                    setTimeout(() => initializeScanner(), 500);
-                  }
-                }}
-                className={`p-3 sm:p-4 rounded-lg text-sm sm:text-base transition-colors touch-manipulation ${
-                  qrScanMode === 'barcode'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
-                }`}
-              >
-                <div className="flex items-center justify-center space-x-2">
-                  <span className="text-lg">📊</span>
-                  <span className="font-medium">Barcode Scanner</span>
-                </div>
-                <div className="text-xs sm:text-sm mt-2 text-center opacity-90">
-                  Linear barcodes, QR codes
-                </div>
-              </button>
-              <button
-                onClick={async () => {
-                  setQrScanMode('qr');
-                  if (isInitialized) {
-                    // Stop current scanner
-                    await stopNativeVideo();
-                    setIsInitialized(false);
-                    setIsScannerActive(false);
-                    // Restart scanner with new mode
-                    setTimeout(() => initializeScanner(), 500);
-                  }
-                }}
-                className={`p-3 sm:p-4 rounded-lg text-sm sm:text-base transition-colors touch-manipulation ${
-                  qrScanMode === 'qr'
-                    ? 'bg-green-600 text-white shadow-md'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
-                }`}
-              >
-                <div className="flex items-center justify-center space-x-2">
-                  <span className="text-lg">🔲</span>
-                  <span className="font-medium">Direct QR Scanner</span>
-                </div>
-                <div className="text-xs sm:text-sm mt-2 text-center opacity-90">
-                  QR codes only, faster
-                </div>
-              </button>
-            </div>
-            <div className="mt-3 p-2 bg-blue-50 rounded-md">
-              <p className="text-xs sm:text-sm text-blue-700 text-center">
-                {qrScanMode === 'barcode' 
-                  ? "Uses Html5Qrcode for barcodes and QR codes with OCR fallback"
-                  : "Uses jsQR directly for QR codes only, optimized for speed"
-                }
-              </p>
-              {qrScanMode === 'qr' && (
-                <p className="text-xs text-orange-600 text-center mt-1">
-                  ⚠️ Direct QR scanner may not work on all mobile browsers. If it fails, try the Barcode Scanner instead.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Camera selector - Mobile Responsive */}
         {availableCameras.length > 1 && (
