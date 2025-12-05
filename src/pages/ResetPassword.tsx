@@ -32,17 +32,12 @@ const ResetPassword = () => {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        console.log("ResetPassword - Checking session. Current URL:", window.location.href);
-        console.log("ResetPassword - Hash:", window.location.hash ? window.location.hash.substring(0, 50) + "..." : "none");
-        console.log("ResetPassword - Search params:", window.location.search);
-        
         // Check for token in query params (from Supabase verify endpoint)
         const token = searchParams.get("token");
         const typeFromQuery = searchParams.get("type");
         
         // If we have a token in query params, verify it first
         if (token && typeFromQuery === "recovery") {
-          console.log("ResetPassword - Found token in query params, verifying...");
           try {
             const { data, error } = await supabase.auth.verifyOtp({
               token_hash: token,
@@ -50,7 +45,7 @@ const ResetPassword = () => {
             });
             
             if (error) {
-              console.error("Error verifying password reset token:", error);
+              console.error("Error verifying password reset token:", { code: error.code, message: error.message });
               setError("Invalid or expired reset link. Please request a new password reset.");
               setIsValidSession(false);
               setIsCheckingSession(false);
@@ -58,7 +53,6 @@ const ResetPassword = () => {
             }
             
             if (data?.session) {
-              console.log("ResetPassword - Token verified, session created");
               setIsValidSession(true);
               setIsCheckingSession(false);
               // Clear query params from URL
@@ -66,7 +60,7 @@ const ResetPassword = () => {
               return;
             }
           } catch (error) {
-            console.error("Error verifying token:", error);
+            console.error("Error verifying token:", error instanceof Error ? error.message : 'Unknown error');
             setError("Failed to verify reset link. Please request a new password reset.");
             setIsValidSession(false);
             setIsCheckingSession(false);
@@ -77,20 +71,10 @@ const ResetPassword = () => {
         // Supabase password reset uses hash fragments in the URL
         // Check for hash fragments first (e.g., #access_token=...&type=recovery)
         const hash = window.location.hash;
-        if (!hash) {
-          console.log("ResetPassword - No hash found, checking for existing session");
-        }
-        
         const hashParams = new URLSearchParams(hash.substring(1));
         const accessToken = hashParams.get("access_token");
         const refreshToken = hashParams.get("refresh_token");
         const type = hashParams.get("type");
-        
-        console.log("ResetPassword - Hash params:", { 
-          type, 
-          hasAccessToken: !!accessToken, 
-          hasRefreshToken: !!refreshToken 
-        });
         
         // Check for error parameters in hash
         const error = hashParams.get("error");
@@ -99,7 +83,7 @@ const ResetPassword = () => {
         
         // If we have an error in the hash, show it
         if (error) {
-          console.error("Password reset error from URL:", { error, errorCode, errorDescription });
+          console.error("Password reset error from URL:", { errorCode, errorDescription });
           setError(errorDescription || error || "Invalid or expired reset link. Please request a new password reset.");
           setIsValidSession(false);
           setIsCheckingSession(false);
@@ -109,14 +93,13 @@ const ResetPassword = () => {
         // If we have tokens in hash, try to set the session first
         // This is the proper way to handle Supabase password reset
         if (accessToken && refreshToken && type === "recovery") {
-          console.log("ResetPassword - Setting session from password reset tokens");
           const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           });
           
           if (sessionError) {
-            console.error("Error setting session from tokens:", sessionError);
+            console.error("Error setting session from tokens:", { code: sessionError.code, message: sessionError.message });
             setError("Invalid or expired reset link. Please request a new password reset.");
             setIsValidSession(false);
             setIsCheckingSession(false);
@@ -124,7 +107,6 @@ const ResetPassword = () => {
           }
           
           if (sessionData?.session?.user) {
-            console.log("ResetPassword - Session set successfully from password reset tokens");
             setIsValidSession(true);
             setIsCheckingSession(false);
             // Clear the hash from URL after processing
@@ -137,7 +119,7 @@ const ResetPassword = () => {
         const { data: { session }, error: getSessionError } = await supabase.auth.getSession();
         
         if (getSessionError) {
-          console.error("Error checking session:", getSessionError);
+          console.error("Error checking session:", { code: getSessionError.code, message: getSessionError.message });
           setError("Invalid or expired reset link. Please request a new password reset.");
           setIsValidSession(false);
         } else if (session?.user) {
@@ -147,7 +129,7 @@ const ResetPassword = () => {
           setIsValidSession(false);
         }
       } catch (error) {
-        console.error("Error checking session:", error);
+        console.error("Error checking session:", error instanceof Error ? error.message : 'Unknown error');
         setError("Invalid or expired reset link. Please request a new password reset.");
         setIsValidSession(false);
       } finally {

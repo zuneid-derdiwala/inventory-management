@@ -188,7 +188,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const hashParams = new URLSearchParams(hash.substring(1));
         const type = hashParams.get("type");
         if (type === "recovery") {
-          console.log("Password recovery detected in hash on initial load");
           // Redirect to reset password page
           window.location.href = `/reset-password${hash}`;
           return;
@@ -202,7 +201,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Password recovery sessions are temporary and unverified
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         if (hashParams.get("type") === "recovery" || session.user.recovery_sent_at) {
-          console.log("Password recovery session detected, redirecting to reset-password");
           window.location.href = `/reset-password${window.location.hash || ""}`;
           return;
         }
@@ -229,7 +227,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           // Only allow unverified users on signup or verification pages
           // Sign them out if they're trying to access other pages (including login)
           if (currentPath !== '/verify-email' && currentPath !== '/signup' && currentPath !== '/reset-password') {
-            console.log("Signing out unverified user on initial load - email not confirmed");
             await supabase.auth.signOut();
             setSession(null);
             setUser(null);
@@ -243,7 +240,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         
         // If password recovery and on homepage, redirect to reset-password
         if (isPasswordRecovery && currentPath === "/") {
-          console.log("Password recovery detected, redirecting to reset-password");
           window.location.href = `/reset-password${hash}`;
           return;
         }
@@ -311,7 +307,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         
         // Handle password recovery event - allow session for password reset
         if (event === 'PASSWORD_RECOVERY' && session?.user) {
-          console.log("Password recovery event detected");
           // Allow session to be set for password recovery
           setSession(session);
           setUser(session.user);
@@ -349,7 +344,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           // Only allow unverified users on signup, verification, or reset password pages
           // Sign them out if they're trying to access other pages (including login)
           if (!isVerificationPage && !isSignupPage && !isResetPasswordPage) {
-            console.log("Signing out unverified user - email not confirmed");
             await supabase.auth.signOut();
             setSession(null);
             setUser(null);
@@ -753,15 +747,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       const redirectUrl = `${window.location.origin}/reset-password`;
 
-      console.log("Sending password reset email to:", trimmedEmail);
-      console.log("Redirect URL:", redirectUrl);
-
       const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
         redirectTo: redirectUrl,
       });
 
       if (error) {
-        console.error("Password reset error:", error);
+        console.error("Password reset error:", { code: error.code, message: error.message });
         
         // Provide more helpful error messages
         if (error.message?.includes("rate limit") || error.message?.includes("too many")) {
@@ -775,11 +766,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // 1. Email sending is not configured
       // 2. Redirect URL is not whitelisted
       
-      console.log("Password reset email sent successfully");
       showSuccess("Password reset email sent! Please check your inbox (and spam folder).");
       return { success: true };
     } catch (error) {
-      console.error("Error during password reset:", error);
+      console.error("Error during password reset:", error instanceof Error ? error.message : 'Unknown error');
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       return { success: false, error: errorMessage };
     }
@@ -810,7 +800,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       showSuccess("Verification email sent! Please check your inbox (and spam folder).");
       return { success: true };
     } catch (error) {
-      console.error("Error resending verification email:", error);
+      console.error("Error resending verification email:", error instanceof Error ? error.message : 'Unknown error');
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       return { success: false, error: errorMessage };
     } finally {

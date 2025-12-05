@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
 import { supabase } from "@/lib/supabase";
 import { EntryData } from "@/context/DataContext";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { sanitizeUserInput } from "@/utils/sanitize";
 
 const Database = () => {
   const { database, deleteEntry, availableBrands, availableModels, availableBookingPersons, isLoadingData, getModelsByBrand } = useData();
@@ -150,7 +151,7 @@ const Database = () => {
           .order("created_at", { ascending: false });
 
         if (error) {
-          console.error("Error fetching all data:", error);
+          console.error("Error fetching all data:", { code: error.code, message: error.message });
           setAllData([]);
           return;
         }
@@ -174,7 +175,6 @@ const Database = () => {
         if (joinError) {
           // If error is about is_deleted column not existing, try without filter
           if (joinError.code === '42703' || joinError.message?.includes('column "is_deleted" does not exist')) {
-            console.log("is_deleted column doesn't exist, fetching all entries...");
             const { data: entriesWithoutFilter, error: retryError } = await supabase
               .from("entries")
               .select(`
@@ -187,7 +187,7 @@ const Database = () => {
               .order("created_at", { ascending: false });
             
             if (retryError) {
-              console.error("Error fetching entries with joins (retry):", retryError);
+              console.error("Error fetching entries with joins (retry):", { code: retryError.code, message: retryError.message });
             } else {
               // Use entries without filter if is_deleted column doesn't exist
               const convertedData: EntryData[] = (entriesWithoutFilter || []).map((entry: any) => ({
@@ -206,7 +206,7 @@ const Database = () => {
               return;
             }
           } else {
-            console.error("Error fetching entries with joins:", joinError);
+            console.error("Error fetching entries with joins:", { code: joinError.code, message: joinError.message });
           }
         }
 
@@ -226,7 +226,7 @@ const Database = () => {
 
         setAllData(convertedData);
       } catch (error) {
-        console.error("Error fetching all data:", error);
+        console.error("Error fetching all data:", error instanceof Error ? error.message : 'Unknown error');
         setAllData([]);
       } finally {
         setIsLoadingAllData(false);
@@ -394,12 +394,12 @@ const Database = () => {
         try {
           const { data, error } = await supabase.from("entries").select("*");
           if (error) {
-            console.error("Error fetching all data after delete:", error);
+            console.error("Error fetching all data after delete:", { code: error.code, message: error.message });
           } else {
             setAllData(data || []);
           }
         } catch (error) {
-          console.error("Error fetching all data after delete:", error);
+          console.error("Error fetching all data after delete:", error instanceof Error ? error.message : 'Unknown error');
         } finally {
           setIsLoadingAllData(false);
         }
@@ -677,14 +677,14 @@ const Database = () => {
                 <TableBody>
                   {filteredData.map((entry, index) => (
                     <TableRow key={entry.imei || index}>
-                      <TableCell className="font-medium">{entry.imei}</TableCell>
-                      <TableCell>{entry.brand}</TableCell>
-                      <TableCell>{entry.model}</TableCell>
-                      <TableCell>{entry.seller}</TableCell>
-                      <TableCell>{entry.bookingPerson}</TableCell>
+                      <TableCell className="font-medium">{sanitizeUserInput(entry.imei)}</TableCell>
+                      <TableCell>{sanitizeUserInput(entry.brand)}</TableCell>
+                      <TableCell>{sanitizeUserInput(entry.model)}</TableCell>
+                      <TableCell>{sanitizeUserInput(entry.seller)}</TableCell>
+                      <TableCell>{sanitizeUserInput(entry.bookingPerson)}</TableCell>
                       <TableCell>{entry.inwardDate ? format(entry.inwardDate, "dd/MM/yyyy") : "N/A"}</TableCell>
                       <TableCell>{entry.inwardAmount ? `₹${entry.inwardAmount}` : "N/A"}</TableCell>
-                      <TableCell>{entry.buyer || "N/A"}</TableCell>
+                      <TableCell>{sanitizeUserInput(entry.buyer) || "N/A"}</TableCell>
                       <TableCell>{entry.outwardDate ? format(entry.outwardDate, "dd/MM/yyyy") : "N/A"}</TableCell>
                       <TableCell>{entry.outwardAmount ? `₹${entry.outwardAmount}` : "N/A"}</TableCell>
                       <TableCell className="text-right">
@@ -705,7 +705,7 @@ const Database = () => {
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    This action cannot be undone. This will permanently delete the entry with IMEI: {entry.imei}.
+                                    This action cannot be undone. This will permanently delete the entry with IMEI: {sanitizeUserInput(entry.imei)}.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>

@@ -14,6 +14,7 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { showSuccess, showError, showLoading, dismissToast } from "@/utils/toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { sanitizeUrl, sanitizeUserInput } from "@/utils/sanitize";
 
 interface UserProfile {
   id: string;
@@ -59,43 +60,37 @@ const ManageUsers = () => {
     setIsLoading(true);
     try {
       // Try RPC function first (recommended for admin access)
-      console.log('Attempting to fetch users via RPC function...');
       const { data: rpcData, error: rpcError } = await supabase.rpc('get_all_profiles');
       
       if (rpcError) {
-        console.error('RPC function error:', rpcError);
-        
         // If RPC function doesn't exist, try direct query
         if (rpcError.code === '42883' || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
-          console.log('RPC function not found, trying direct query...');
           const { data, error } = await supabase
             .from('profiles')
             .select('id, email, username, avatar_url, role, created_at, is_active')
             .order('created_at', { ascending: false });
 
           if (error) {
-            console.error('Direct query error:', error);
+            console.error('Error fetching users (direct query):', { code: error.code, message: error.message });
             if (error.code === '42501' || error.message.includes('row-level security')) {
               showError('Unable to fetch users. Please run the SQL script "supabase_get_all_profiles_function.sql" in your Supabase dashboard to set up the admin function.');
             } else {
-              showError('Failed to fetch users: ' + error.message);
+              showError('Failed to fetch users');
             }
             setUsers([]);
           } else {
-            console.log('Fetched users via direct query:', data?.length || 0);
             setUsers(data || []);
           }
         } else {
-          showError('Unable to fetch users: ' + rpcError.message);
-          console.error('RPC error details:', rpcError);
+          console.error('Error fetching users (RPC):', { code: rpcError.code, message: rpcError.message });
+          showError('Unable to fetch users');
           setUsers([]);
         }
       } else {
-        console.log('Fetched users via RPC function:', rpcData?.length || 0);
         setUsers(rpcData || []);
       }
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error('Error fetching users (unexpected):', error instanceof Error ? error.message : 'Unknown error');
       showError('An unexpected error occurred while fetching users');
       setUsers([]);
     } finally {
@@ -117,12 +112,13 @@ const ManageUsers = () => {
       });
 
       if (error) {
-        showError('Failed to send password reset email: ' + error.message);
+        console.error('Error resetting password:', { code: error.code, message: error.message });
+        showError('Failed to send password reset email');
       } else {
         showSuccess(`Password reset email sent to ${userEmail}`);
       }
     } catch (error) {
-      console.error('Error resetting password:', error);
+      console.error('Error resetting password (unexpected):', error instanceof Error ? error.message : 'Unknown error');
       showError('An unexpected error occurred while resetting password');
     } finally {
       setIsResettingPassword(null);
@@ -174,8 +170,7 @@ const ManageUsers = () => {
         });
 
       if (uploadError) {
-        console.error('Error uploading avatar:', uploadError);
-        
+        console.error('Error uploading avatar:', { message: uploadError.message });
         // Check if it's a bucket not found error
         if (uploadError.message.includes('Bucket not found') || uploadError.message.includes('bucket')) {
           showError('Avatar storage not configured. Please run the database setup script to create the avatars bucket.');
@@ -193,7 +188,7 @@ const ManageUsers = () => {
       setAvatarUrl(publicUrl);
       showSuccess('Avatar uploaded successfully!');
     } catch (error) {
-      console.error('Error uploading avatar:', error);
+      console.error('Error uploading avatar (unexpected):', error instanceof Error ? error.message : 'Unknown error');
       showError('Failed to upload avatar. Please run the database setup script.');
     } finally {
       dismissToast(loadingToastId);
@@ -216,11 +211,8 @@ const ManageUsers = () => {
       });
 
       if (rpcError) {
-        console.error('RPC function error:', rpcError);
-        
         // If RPC function doesn't exist, try direct update
         if (rpcError.code === '42883' || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
-          console.log('RPC function not found, trying direct update...');
           const { error } = await supabase
             .from('profiles')
             .update({
@@ -230,15 +222,17 @@ const ManageUsers = () => {
             .eq('id', editingUser.id);
 
           if (error) {
+            console.error('Error updating user (direct update):', { code: error.code, message: error.message });
             if (error.code === '42501' || error.message.includes('row-level security')) {
               showError('Unable to update user. Please run "supabase_update_user_profile_function.sql" in your Supabase dashboard to set up admin update permissions.');
             } else {
-              showError('Failed to update user: ' + error.message);
+              showError('Failed to update user');
             }
             return;
           }
         } else {
-          showError('Failed to update user: ' + rpcError.message);
+          console.error('Error updating user (RPC):', { code: rpcError.code, message: rpcError.message });
+          showError('Failed to update user');
           return;
         }
       }
@@ -249,7 +243,7 @@ const ManageUsers = () => {
       // Close dialog and reset state
       handleCloseDialog();
     } catch (error) {
-      console.error('Error updating user:', error);
+      console.error('Error updating user (unexpected):', error instanceof Error ? error.message : 'Unknown error');
       showError('An unexpected error occurred while updating user');
     } finally {
       dismissToast(loadingToastId);
@@ -269,28 +263,27 @@ const ManageUsers = () => {
       });
 
       if (rpcError) {
-        console.error('RPC function error:', rpcError);
-        
         // If RPC function doesn't exist, try direct update
         if (rpcError.code === '42883' || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
-          console.log('RPC function not found, trying direct update...');
           const { error } = await supabase
             .from('profiles')
             .update({ is_active: false })
             .eq('id', userId);
 
           if (error) {
+            console.error('Error deactivating user (direct update):', { code: error.code, message: error.message });
             if (error.code === '42501' || error.message.includes('row-level security')) {
               showError('Unable to deactivate user. Please run "supabase_update_user_status_function.sql" in your Supabase dashboard to set up admin update permissions.');
             } else if (error.code === '42703' || error.message?.includes('column "is_active" does not exist')) {
               showError('is_active column not found. Please run the database migration script to add it.');
             } else {
-              showError('Failed to deactivate user: ' + error.message);
+              showError('Failed to deactivate user');
             }
             return;
           }
         } else {
-          showError('Failed to deactivate user: ' + rpcError.message);
+          console.error('Error deactivating user (RPC):', { code: rpcError.code, message: rpcError.message });
+          showError('Failed to deactivate user');
           return;
         }
       }
@@ -299,7 +292,7 @@ const ManageUsers = () => {
       // Refetch users to get the latest data from database
       await fetchUsers();
     } catch (error) {
-      console.error('Error deactivating user:', error);
+      console.error('Error deactivating user (unexpected):', error instanceof Error ? error.message : 'Unknown error');
       showError('An unexpected error occurred while deactivating user');
     } finally {
       dismissToast(loadingToastId);
@@ -318,26 +311,25 @@ const ManageUsers = () => {
       });
 
       if (rpcError) {
-        console.error('RPC function error:', rpcError);
-        
         // If RPC function doesn't exist, try direct update
         if (rpcError.code === '42883' || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
-          console.log('RPC function not found, trying direct update...');
           const { error } = await supabase
             .from('profiles')
             .update({ is_active: true })
             .eq('id', userId);
 
           if (error) {
+            console.error('Error activating user (direct update):', { code: error.code, message: error.message });
             if (error.code === '42501' || error.message.includes('row-level security')) {
               showError('Unable to activate user. Please run "supabase_update_user_status_function.sql" in your Supabase dashboard to set up admin update permissions.');
             } else {
-              showError('Failed to activate user: ' + error.message);
+              showError('Failed to activate user');
             }
             return;
           }
         } else {
-          showError('Failed to activate user: ' + rpcError.message);
+          console.error('Error activating user (RPC):', { code: rpcError.code, message: rpcError.message });
+          showError('Failed to activate user');
           return;
         }
       }
@@ -346,7 +338,7 @@ const ManageUsers = () => {
       // Refetch users to get the latest data from database
       await fetchUsers();
     } catch (error) {
-      console.error('Error activating user:', error);
+      console.error('Error activating user (unexpected):', error instanceof Error ? error.message : 'Unknown error');
       showError('An unexpected error occurred while activating user');
     } finally {
       dismissToast(loadingToastId);
@@ -355,10 +347,14 @@ const ManageUsers = () => {
 
   const getUserInitials = (user: UserProfile) => {
     if (user.username) {
-      return user.username.substring(0, 2).toUpperCase();
+      // Sanitize username before extracting initials
+      const sanitized = sanitizeUserInput(user.username);
+      return sanitized.substring(0, 2).toUpperCase();
     }
     if (user.email) {
-      return user.email.substring(0, 2).toUpperCase();
+      // Sanitize email before extracting initials
+      const sanitized = sanitizeUserInput(user.email);
+      return sanitized.substring(0, 2).toUpperCase();
     }
     return "U";
   };
@@ -424,7 +420,7 @@ const ManageUsers = () => {
                           <div className="flex items-center gap-2">
                             <Avatar className="h-8 w-8">
                               {user.avatar_url ? (
-                                <AvatarImage src={user.avatar_url} alt={user.username || user.email} />
+                                <AvatarImage src={sanitizeUrl(user.avatar_url)} alt={sanitizeUserInput(user.username || user.email)} />
                               ) : (
                                 <AvatarFallback className="text-xs">
                                   {getUserInitials(user)}
@@ -432,12 +428,12 @@ const ManageUsers = () => {
                               )}
                             </Avatar>
                             <span className="font-medium">
-                              {user.username || user.email.split('@')[0]}
+                              {sanitizeUserInput(user.username || user.email.split('@')[0])}
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>{user.username || '-'}</TableCell>
+                        <TableCell>{sanitizeUserInput(user.email)}</TableCell>
+                        <TableCell>{sanitizeUserInput(user.username) || '-'}</TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -479,7 +475,7 @@ const ManageUsers = () => {
                                 <DialogHeader>
                                   <DialogTitle>Edit User Profile</DialogTitle>
                                   <DialogDescription>
-                                    Update the profile avatar and role for {user.email}
+                                    Update the profile avatar and role for {sanitizeUserInput(user.email)}
                                   </DialogDescription>
                                 </DialogHeader>
                                 <div className="grid gap-4 py-4">
@@ -489,7 +485,7 @@ const ManageUsers = () => {
                                     <div className="flex items-center gap-4">
                                       <div className="relative">
                                         <Avatar className="h-24 w-24">
-                                          <AvatarImage src={avatarUrl} alt="Preview" />
+                                          <AvatarImage src={sanitizeUrl(avatarUrl)} alt="Preview" />
                                           <AvatarFallback>
                                             {getUserInitials(user)}
                                           </AvatarFallback>
@@ -608,7 +604,7 @@ const ManageUsers = () => {
                                   <AlertDialogHeader>
                                     <AlertDialogTitle>Reset Password</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                      This will send a password reset email to {user.email}. 
+                                      This will send a password reset email to {sanitizeUserInput(user.email)}. 
                                       The user will need to click the link in the email to reset their password.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
@@ -654,7 +650,7 @@ const ManageUsers = () => {
                                   <AlertDialogHeader>
                                     <AlertDialogTitle>Deactivate User</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                      This will deactivate {user.email}. They will not be able to log in, but all their data will be preserved. You can reactivate them later.
+                                      This will deactivate {sanitizeUserInput(user.email)}. They will not be able to log in, but all their data will be preserved. You can reactivate them later.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>

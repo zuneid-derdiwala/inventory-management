@@ -11,7 +11,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn("VITE_SUPABASE_URL=your_supabase_project_url");
   console.warn("VITE_SUPABASE_ANON_KEY=your_supabase_anon_key");
 } else {
-  console.log("Supabase configured successfully:", { url: supabaseUrl, hasKey: !!supabaseAnonKey });
+  // Only log that configuration is successful, without exposing the URL or key
+  console.log("Supabase configured successfully");
 }
 
 // Create the Supabase client

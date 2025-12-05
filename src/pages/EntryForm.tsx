@@ -236,8 +236,6 @@ const EntryForm = () => {
   };
 
   const handleScanSuccess = (decodedText: string) => {
-    console.log("QR Code scanned successfully:", decodedText);
-    
     // Validate scanned IMEI
     const imeiValidation = validateIMEI(decodedText);
     if (!imeiValidation.isValid) {

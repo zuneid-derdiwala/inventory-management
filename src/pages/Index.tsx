@@ -11,6 +11,7 @@ import { Settings, User, Smartphone, ShoppingCart, TrendingUp, Package, Users, B
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { sanitizeUrl, sanitizeUserInput } from "@/utils/sanitize";
 
 const Index = () => {
   const { isLoadingData } = useData();
@@ -25,7 +26,6 @@ const Index = () => {
       const hashParams = new URLSearchParams(hash.substring(1));
       const type = hashParams.get("type");
       if (type === "recovery") {
-        console.log("Index - Password recovery detected, redirecting to reset-password");
         navigate(`/reset-password${hash}`, { replace: true });
         return;
       }
@@ -36,7 +36,6 @@ const Index = () => {
       const hash = window.location.hash;
       const hashParams = hash ? new URLSearchParams(hash.substring(1)) : null;
       if (hashParams?.get("type") === "recovery") {
-        console.log("Index - Unverified user with recovery hash, redirecting to reset-password");
         navigate(`/reset-password${hash}`, { replace: true });
         return;
       }
@@ -84,7 +83,7 @@ const Index = () => {
             .maybeSingle(); // Use maybeSingle() to handle missing profiles
           
           if (error) {
-            console.error('Error fetching profile:', error);
+            console.error('Error fetching profile:', { code: error.code, message: error.message });
             // Set fallback username from email
             if (user?.email) {
               setUsername(user.email.split('@')[0] || 'User');
@@ -104,7 +103,7 @@ const Index = () => {
             setAvatarUrl('');
           }
         } catch (error) {
-          console.error('Error fetching username:', error);
+          console.error('Error fetching username:', error instanceof Error ? error.message : 'Unknown error');
           // Set fallback username from email
           if (user?.email) {
             setUsername(user.email.split('@')[0] || 'User');
@@ -154,7 +153,7 @@ const Index = () => {
         const { data: entries, error } = await entriesQuery;
 
         if (error) {
-          console.error('Error fetching analytics:', error);
+          console.error('Error fetching analytics:', { code: error.code, message: error.message });
           setIsLoadingAnalytics(false);
           return;
         }
@@ -227,7 +226,7 @@ const Index = () => {
           topBrands,
         });
       } catch (error) {
-        console.error('Error calculating analytics:', error);
+        console.error('Error calculating analytics:', error instanceof Error ? error.message : 'Unknown error');
       } finally {
         setIsLoadingAnalytics(false);
       }
@@ -238,10 +237,12 @@ const Index = () => {
 
   const getUserInitials = () => {
     if (username) {
-      return username.substring(0, 2).toUpperCase();
+      const sanitized = sanitizeUserInput(username);
+      return sanitized.substring(0, 2).toUpperCase();
     }
     if (user?.email) {
-      return user.email.substring(0, 2).toUpperCase();
+      const sanitized = sanitizeUserInput(user.email);
+      return sanitized.substring(0, 2).toUpperCase();
     }
     return "U";
   };
@@ -291,7 +292,7 @@ const Index = () => {
               <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto justify-between sm:justify-end">
                 <Avatar className="h-16 w-16 sm:h-20 sm:w-20 border-2 sm:border-4 border-white/30 shadow-xl flex-shrink-0">
                   {avatarUrl ? (
-                    <AvatarImage src={avatarUrl} alt="Profile" className="object-cover" />
+                    <AvatarImage src={sanitizeUrl(avatarUrl)} alt="Profile" className="object-cover" />
                   ) : (
                     <AvatarFallback className="text-base sm:text-xl font-bold bg-white/20 text-white backdrop-blur-sm">
                       {getUserInitials()}
@@ -305,7 +306,7 @@ const Index = () => {
                       <span className="text-sm sm:text-base">Loading...</span>
                     </div>
                   ) : username ? (
-                    <>Hello, <span className="text-white font-bold break-words">{username}</span>! 👋</>
+                    <>Hello, <span className="text-white font-bold break-words">{sanitizeUserInput(username)}</span>! 👋</>
                   ) : (
                     <>Hello, <span className="text-white font-bold">User</span>! 👋</>
                   )}
@@ -434,7 +435,7 @@ const Index = () => {
                             } shadow-md`}>
                               {index + 1}
                             </div>
-                            <span className="font-semibold text-sm sm:text-base truncate">{person.name}</span>
+                            <span className="font-semibold text-sm sm:text-base truncate">{sanitizeUserInput(person.name)}</span>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-xs sm:text-sm font-medium bg-primary/10 px-2 sm:px-3 py-1 rounded-full whitespace-nowrap">{person.count} mobiles</span>
@@ -476,7 +477,7 @@ const Index = () => {
                             } shadow-md`}>
                               {index + 1}
                             </div>
-                            <span className="font-semibold text-sm sm:text-base truncate">{brand.name}</span>
+                            <span className="font-semibold text-sm sm:text-base truncate">{sanitizeUserInput(brand.name)}</span>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-xs sm:text-sm font-medium bg-primary/10 px-2 sm:px-3 py-1 rounded-full whitespace-nowrap">{brand.count} mobiles</span>

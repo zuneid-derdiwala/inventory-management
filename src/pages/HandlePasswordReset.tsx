@@ -19,8 +19,6 @@ const HandlePasswordReset = () => {
         const type = searchParams.get("type");
         const redirectTo = searchParams.get("redirect_to") || window.location.origin;
 
-        console.log("HandlePasswordReset - Processing verify request:", { token: token?.substring(0, 20) + "...", type, redirectTo });
-
         // If this is a password recovery verify request
         if (type === "recovery" && token) {
           // Verify the token using verifyOtp
@@ -30,14 +28,13 @@ const HandlePasswordReset = () => {
           });
 
           if (error) {
-            console.error("Error verifying password reset token:", error);
+            console.error("Error verifying password reset token:", { code: error.code, message: error.message });
             // Redirect to forgot password page with error
             navigate("/forgot-password?error=invalid_token");
             return;
           }
 
           if (data?.session) {
-            console.log("Password reset token verified, session created");
             // Get the hash fragments from the session
             // Supabase will add hash fragments after verification
             // Wait a moment for the hash to be added, then redirect
@@ -60,7 +57,7 @@ const HandlePasswordReset = () => {
           navigate("/", { replace: true });
         }
       } catch (error) {
-        console.error("Error handling password reset:", error);
+        console.error("Error handling password reset:", error instanceof Error ? error.message : 'Unknown error');
         navigate("/forgot-password?error=unexpected_error");
       }
     };

@@ -25,14 +25,14 @@ const AssignData = () => {
       const { error } = await supabase.rpc('assign_null_data_to_first_app_user');
       
       if (error) {
-        console.error("Error assigning data:", error);
-        showError(`Failed to assign data: ${error.message}`);
+        console.error("Error assigning data:", { code: error.code, message: error.message });
+        showError("Failed to assign data");
       } else {
         showSuccess("All existing data has been assigned to your account!");
         setIsCompleted(true);
       }
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Error:", error instanceof Error ? error.message : 'Unknown error');
       showError("An unexpected error occurred while assigning data.");
     } finally {
       setIsLoading(false);

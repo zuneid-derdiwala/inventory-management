@@ -121,7 +121,7 @@ const Login = () => {
         setError(result.error || "Failed to resend verification email.");
       }
     } catch (error) {
-      console.error("Error resending verification:", error);
+      console.error("Error resending verification:", error instanceof Error ? error.message : 'Unknown error');
       showError("An unexpected error occurred. Please try again.");
     } finally {
       setIsResendingVerification(false);

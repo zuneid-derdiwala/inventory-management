@@ -27,17 +27,8 @@ const PasswordResetRedirect = () => {
       const accessToken = hashParams.get("access_token");
       const refreshToken = hashParams.get("refresh_token");
       
-      console.log("PasswordResetRedirect - Checking hash:", { 
-        type, 
-        hasAccessToken: !!accessToken, 
-        hasRefreshToken: !!refreshToken, 
-        pathname: location.pathname,
-        fullHash: hash.substring(0, 50) + "..."
-      });
-      
       // If we're not already on the reset-password page and we have recovery tokens
       if (type === "recovery" && accessToken && refreshToken && location.pathname !== "/reset-password") {
-        console.log("PasswordResetRedirect - Redirecting to /reset-password with hash");
         hasRedirected.current = true;
         // Use window.location for immediate redirect to preserve hash
         window.location.href = `/reset-password${hash}`;

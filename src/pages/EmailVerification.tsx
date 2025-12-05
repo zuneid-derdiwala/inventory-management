@@ -171,7 +171,7 @@ const EmailVerification = () => {
         setStatus("error");
         setErrorMessage("Invalid verification link. Missing required parameters.");
       } catch (error) {
-        console.error("Error verifying email:", error);
+        console.error("Error verifying email:", error instanceof Error ? error.message : 'Unknown error');
         setStatus("error");
         setErrorMessage("An unexpected error occurred. Please try again.");
       }
@@ -264,7 +264,7 @@ const EmailVerification = () => {
         setResendEmail(""); // Clear the input
       }
     } catch (error) {
-      console.error("Error resending verification:", error);
+      console.error("Error resending verification:", error instanceof Error ? error.message : 'Unknown error');
       showError("An unexpected error occurred. Please try again.");
     } finally {
       setIsResending(false);

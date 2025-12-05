@@ -100,7 +100,7 @@ const ProfileSettings = () => {
             .maybeSingle();
 
           if (error) {
-            console.error('Error fetching profile:', error);
+            console.error('Error fetching profile:', { code: error.code, message: error.message });
             // If some columns don't exist, try with fewer fields
             const { data: usernameData, error: usernameError } = await supabase
               .from('profiles')
@@ -109,7 +109,7 @@ const ProfileSettings = () => {
               .maybeSingle();
 
             if (usernameError) {
-              console.error('Error fetching username:', usernameError);
+              console.error('Error fetching username:', { code: usernameError.code, message: usernameError.message });
               // Last resort: try just username
               const { data: basicData, error: basicError } = await supabase
                 .from('profiles')
@@ -118,7 +118,7 @@ const ProfileSettings = () => {
                 .maybeSingle();
 
               if (basicError) {
-                console.error('Error fetching basic profile:', basicError);
+                console.error('Error fetching basic profile:', { code: basicError.code, message: basicError.message });
                 showError('Failed to load profile data. Please run the database setup script.');
               } else {
                 setUsername(basicData?.username || '');
@@ -139,7 +139,7 @@ const ProfileSettings = () => {
             setCountryCode(data?.country_code || '+1');
           }
         } catch (error) {
-          console.error('Error fetching profile:', error);
+          console.error('Error fetching profile:', error instanceof Error ? error.message : 'Unknown error');
           showError('Failed to load profile data');
         } finally {
           setIsLoading(false);
@@ -286,7 +286,7 @@ const ProfileSettings = () => {
       }
 
       if (error) {
-        console.error('Error updating profile:', error);
+        console.error('Error updating profile:', { code: error.code, message: error.message });
         
         // Handle specific error cases
         if (error.code === '23505') {
@@ -373,7 +373,7 @@ const ProfileSettings = () => {
         }, 1000);
       }
     } catch (error) {
-      console.error('Error updating profile:', error);
+      console.error('Error updating profile:', error instanceof Error ? error.message : 'Unknown error');
       showError('Failed to update profile');
     } finally {
       dismissToast(loadingToastId);
@@ -414,7 +414,7 @@ const ProfileSettings = () => {
         });
 
       if (uploadError) {
-        console.error('Error uploading avatar:', uploadError);
+        console.error('Error uploading avatar:', { message: uploadError.message });
         
         // Check if it's a bucket not found error
         if (uploadError.message.includes('Bucket not found') || uploadError.message.includes('bucket')) {
@@ -433,7 +433,7 @@ const ProfileSettings = () => {
       setAvatarUrl(publicUrl);
       showSuccess('Avatar uploaded successfully!');
     } catch (error) {
-      console.error('Error uploading avatar:', error);
+      console.error('Error uploading avatar:', error instanceof Error ? error.message : 'Unknown error');
       showError('Failed to upload avatar. Please run the database setup script.');
     } finally {
       dismissToast(loadingToastId);
