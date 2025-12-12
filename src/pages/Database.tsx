@@ -3,7 +3,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
@@ -11,7 +10,7 @@ import { useData } from "@/context/DataContext";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Edit, Trash2, X } from "lucide-react";
+import { Edit, Trash2, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Separator } from "@/components/ui/separator"; // Import Separator
 import DataImporter from "@/components/DataImporter"; // Import DataImporter
 import DataExporter from "@/components/DataExporter"; // Import DataExporter
@@ -22,7 +21,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { sanitizeUserInput } from "@/utils/sanitize";
 
 const Database = () => {
-  const { database, deleteEntry, availableBrands, availableModels, availableBookingPersons, isLoadingData, getModelsByBrand } = useData();
+  const { database, deleteEntry, availableBrands, isLoadingData, getModelsByBrand } = useData();
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
 
@@ -103,6 +102,10 @@ const Database = () => {
     }
     return [];
   });
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const recordsPerPage = 20;
 
 
   // Track page navigation
@@ -255,9 +258,34 @@ const Database = () => {
     localStorage.removeItem('database_selectedModels');
     localStorage.removeItem('database_selectedBookingPersons');
     localStorage.removeItem('database_selectedBuyers');
+    
+    // Reset to page 1
+    setCurrentPage(1);
+  };
+
+  // Pagination handlers
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      // Scroll to top of table
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      goToPage(currentPage - 1);
+    }
+  };
+
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      goToPage(currentPage + 1);
+    }
   };
 
   // Use appropriate data source based on user role
+  // This contains ALL data - filters will work on the complete dataset
   const dataSource = isAdmin ? allData : database;
 
   // Get all available models from all brands
@@ -313,40 +341,68 @@ const Database = () => {
     return Array.from(buyersSet).sort();
   }, [dataSource]);
 
-  const filteredData = dataSource.filter(entry => {
-    // IMEI filter (multi-select)
-    const matchesIMEI = selectedIMEIs.length === 0 || 
-      (entry.imei && selectedIMEIs.includes(entry.imei));
+  // Get all available booking persons from data (not filtered by user_id)
+  // This shows ALL booking persons that exist in the entries, regardless of which user created them
+  // For admin users: shows booking persons from all entries (all users)
+  // For regular users: shows booking persons from their own entries
+  const allAvailableBookingPersons = useMemo(() => {
+    const bookingPersonsSet = new Set<string>();
+    dataSource.forEach(entry => {
+      if (entry.bookingPerson) bookingPersonsSet.add(entry.bookingPerson);
+    });
+    return Array.from(bookingPersonsSet).sort();
+  }, [dataSource]);
 
-    // Outward Date filter (multi-select) - matches outward date only
-    const matchesOutwardDate = selectedOutwardDates.length === 0 || 
-      (entry.outwardDate && selectedOutwardDates.includes(format(entry.outwardDate, "dd/MM/yyyy")));
+  // Filter ALL data first (not just current page)
+  // This ensures filters work on the complete dataset
+  const filteredData = useMemo(() => {
+    return dataSource.filter(entry => {
+      // IMEI filter (multi-select)
+      const matchesIMEI = selectedIMEIs.length === 0 || 
+        (entry.imei && selectedIMEIs.includes(entry.imei));
 
-    // Brand filter (multi-select)
-    const matchesBrand = selectedBrands.length === 0 || 
-      (entry.brand && selectedBrands.includes(entry.brand));
+      // Outward Date filter (multi-select) - matches outward date only
+      const matchesOutwardDate = selectedOutwardDates.length === 0 || 
+        (entry.outwardDate && selectedOutwardDates.includes(format(entry.outwardDate, "dd/MM/yyyy")));
 
-    // Model filter (multi-select)
-    const matchesModel = selectedModels.length === 0 || 
-      (entry.model && selectedModels.includes(entry.model));
+      // Brand filter (multi-select)
+      const matchesBrand = selectedBrands.length === 0 || 
+        (entry.brand && selectedBrands.includes(entry.brand));
 
-    // Booking Person filter (multi-select)
-    const matchesBookingPerson = selectedBookingPersons.length === 0 || 
-      (entry.bookingPerson && selectedBookingPersons.includes(entry.bookingPerson));
+      // Model filter (multi-select)
+      const matchesModel = selectedModels.length === 0 || 
+        (entry.model && selectedModels.includes(entry.model));
 
-    // Buyer filter (multi-select)
-    const matchesBuyer = selectedBuyers.length === 0 || 
-      (entry.buyer && selectedBuyers.includes(entry.buyer));
+      // Booking Person filter (multi-select)
+      const matchesBookingPerson = selectedBookingPersons.length === 0 || 
+        (entry.bookingPerson && selectedBookingPersons.includes(entry.bookingPerson));
 
-    // An entry matches if it satisfies all filters
-    // If all filters are empty, all entries are shown.
-    if (selectedIMEIs.length === 0 && selectedOutwardDates.length === 0 && selectedBrands.length === 0 && 
-        selectedModels.length === 0 && selectedBookingPersons.length === 0 && selectedBuyers.length === 0) {
-      return true;
-    }
+      // Buyer filter (multi-select)
+      const matchesBuyer = selectedBuyers.length === 0 || 
+        (entry.buyer && selectedBuyers.includes(entry.buyer));
 
-    return matchesIMEI && matchesOutwardDate && matchesBrand && matchesModel && matchesBookingPerson && matchesBuyer;
-  });
+      // An entry matches if it satisfies all filters
+      // If all filters are empty, all entries are shown.
+      if (selectedIMEIs.length === 0 && selectedOutwardDates.length === 0 && selectedBrands.length === 0 && 
+          selectedModels.length === 0 && selectedBookingPersons.length === 0 && selectedBuyers.length === 0) {
+        return true;
+      }
+
+      return matchesIMEI && matchesOutwardDate && matchesBrand && matchesModel && matchesBookingPerson && matchesBuyer;
+    });
+  }, [dataSource, selectedIMEIs, selectedOutwardDates, selectedBrands, selectedModels, selectedBookingPersons, selectedBuyers]);
+
+  // Pagination calculations
+  // After filtering ALL data, show only 20 records per page
+  const totalPages = Math.ceil(filteredData.length / recordsPerPage);
+  const startIndex = (currentPage - 1) * recordsPerPage;
+  const endIndex = startIndex + recordsPerPage;
+  const paginatedData = filteredData.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedIMEIs, selectedOutwardDates, selectedBrands, selectedModels, selectedBookingPersons, selectedBuyers]);
 
   // Calculate summary based on user role
   // For admin: show overall data (all users)
@@ -626,7 +682,7 @@ const Database = () => {
               <MultiSelect
                 value={selectedBookingPersons}
                 onValueChange={setSelectedBookingPersons}
-                options={availableBookingPersons}
+                options={allAvailableBookingPersons}
                 placeholder="Select booking persons"
                 searchPlaceholder="Search booking persons..."
                 emptyText="No booking persons found."
@@ -658,24 +714,28 @@ const Database = () => {
 
           <div className="mt-4 overflow-x-auto">
             {filteredData.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>IMEI</TableHead>
-                    <TableHead>Brand</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead>Seller</TableHead>
-                    <TableHead>Booking Person</TableHead>
-                    <TableHead>Inward Date</TableHead>
-                    <TableHead>Inward Amount</TableHead>
-                    <TableHead>Buyer</TableHead>
-                    <TableHead>Outward Date</TableHead>
-                    <TableHead>Outward Amount</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredData.map((entry, index) => (
+              <>
+                <div className="mb-4 text-sm text-muted-foreground">
+                  Showing {startIndex + 1} to {Math.min(endIndex, filteredData.length)} of {filteredData.length} entries
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>IMEI</TableHead>
+                      <TableHead>Brand</TableHead>
+                      <TableHead>Model</TableHead>
+                      <TableHead>Seller</TableHead>
+                      <TableHead>Booking Person</TableHead>
+                      <TableHead>Inward Date</TableHead>
+                      <TableHead>Inward Amount</TableHead>
+                      <TableHead>Buyer</TableHead>
+                      <TableHead>Outward Date</TableHead>
+                      <TableHead>Outward Amount</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedData.map((entry, index) => (
                     <TableRow key={entry.imei || index}>
                       <TableCell className="font-medium">{sanitizeUserInput(entry.imei)}</TableCell>
                       <TableCell>{sanitizeUserInput(entry.brand)}</TableCell>
@@ -718,9 +778,74 @@ const Database = () => {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                    ))}
+                  </TableBody>
+                </Table>
+                
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="text-sm text-muted-foreground">
+                      Page {currentPage} of {totalPages}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={goToPreviousPage}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        Previous
+                      </Button>
+                      
+                      {/* Page numbers */}
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                          // Show first page, last page, current page, and pages around current
+                          if (
+                            page === 1 ||
+                            page === totalPages ||
+                            (page >= currentPage - 1 && page <= currentPage + 1)
+                          ) {
+                            return (
+                              <Button
+                                key={page}
+                                variant={currentPage === page ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => goToPage(page)}
+                                className="min-w-[2.5rem]"
+                              >
+                                {page}
+                              </Button>
+                            );
+                          } else if (
+                            page === currentPage - 2 ||
+                            page === currentPage + 2
+                          ) {
+                            return (
+                              <span key={page} className="px-2 text-muted-foreground">
+                                ...
+                              </span>
+                            );
+                          }
+                          return null;
+                        })}
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={goToNextPage}
+                        disabled={currentPage === totalPages}
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <p className="text-muted-foreground text-center py-4">No data entries found matching your search.</p>
             )}

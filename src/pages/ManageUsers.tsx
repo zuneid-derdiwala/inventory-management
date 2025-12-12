@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Edit, KeyRound, Loader2, Camera, Trash2 } from "lucide-react";
+import { Edit, KeyRound, Loader2, Camera, Trash2, Search, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { showSuccess, showError, showLoading, dismissToast } from "@/utils/toast";
@@ -49,6 +50,11 @@ const ManageUsers = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // Fetch all users (admin only)
   const fetchUsers = useCallback(async () => {
@@ -359,6 +365,43 @@ const ManageUsers = () => {
     return "U";
   };
 
+  // Filter users based on search query, role, and status
+  const filteredUsers = useMemo(() => {
+    return users.filter((user) => {
+      // Search filter - matches name, username, or email
+      const searchLower = searchQuery.toLowerCase().trim();
+      const matchesSearch = 
+        !searchLower ||
+        (user.username?.toLowerCase().includes(searchLower)) ||
+        (user.email?.toLowerCase().includes(searchLower)) ||
+        (user.email.split('@')[0]?.toLowerCase().includes(searchLower));
+
+      // Role filter
+      const matchesRole = 
+        roleFilter === "all" ||
+        (roleFilter === "admin" && user.role === "admin") ||
+        (roleFilter === "user" && (user.role === "user" || !user.role));
+
+      // Status filter
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" && user.is_active !== false) ||
+        (statusFilter === "inactive" && user.is_active === false);
+
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [users, searchQuery, roleFilter, statusFilter]);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchQuery("");
+    setRoleFilter("all");
+    setStatusFilter("all");
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = searchQuery.trim() !== "" || roleFilter !== "all" || statusFilter !== "all";
+
   if (!isAdmin) {
     return (
       <div className="flex flex-1 items-center justify-center p-4">
@@ -398,8 +441,70 @@ const ManageUsers = () => {
             <CardTitle className="text-center uppercase">Manage Users</CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Filter Section */}
+            <div className="mb-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Search Input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search by name, username, or email..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+
+                {/* Role Filter */}
+                <Select value={roleFilter} onValueChange={setRoleFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Roles</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="user">User</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Status Filter */}
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Clear Filters Button */}
+                {hasActiveFilters && (
+                  <Button
+                    variant="outline"
+                    onClick={clearFilters}
+                    className="w-full md:w-auto"
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Clear Filters
+                  </Button>
+                )}
+              </div>
+
+              {/* Results count */}
+              {hasActiveFilters && (
+                <div className="text-sm text-muted-foreground">
+                  Showing {filteredUsers.length} of {users.length} users
+                </div>
+              )}
+            </div>
+
             {users.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">No users found.</p>
+            ) : filteredUsers.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No users match the current filters.</p>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -414,7 +519,7 @@ const ManageUsers = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {users.map((user) => (
+                    {filteredUsers.map((user) => (
                       <TableRow key={user.id}>
                         <TableCell>
                           <div className="flex items-center gap-2">
