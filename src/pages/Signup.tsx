@@ -165,6 +165,14 @@ const Signup = () => {
       <div className="flex flex-1 items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
+            <div className="flex justify-center mb-6">
+              <img 
+                src="/logo.png" 
+                alt="Stockkeyper" 
+                className="max-h-48 h-auto w-auto object-contain"
+                style={{ minHeight: '120px', maxWidth: '100%' }}
+              />
+            </div>
             <CardTitle className="text-2xl font-bold text-green-600">Check Your Email</CardTitle>
             <CardDescription>
               We've sent a verification link to your email address
@@ -218,6 +226,14 @@ const Signup = () => {
     <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
+          <div className="flex justify-center mb-6">
+            <img 
+              src="/logo.png" 
+              alt="Stockkeyper" 
+              className="max-h-32 h-auto w-auto object-contain"
+              style={{ minHeight: '80px' }}
+            />
+          </div>
           <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
           <CardDescription>
             Sign up to start managing your inventory data

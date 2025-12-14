@@ -132,6 +132,14 @@ const Login = () => {
     <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
+          <div className="flex justify-center mb-6">
+            <img 
+              src="/logo.png" 
+              alt="Stockkeyper" 
+              className="max-h-48 h-auto w-auto object-contain"
+              style={{ minHeight: '120px', maxWidth: '100%' }}
+            />
+          </div>
           <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
           <CardDescription>
             Sign in to your account to access your inventory data

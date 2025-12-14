@@ -133,7 +133,12 @@ const Navbar = () => {
               onClick={() => setIsSheetOpen(false)}
               className="flex items-center gap-2 text-lg font-semibold"
             >
-              <span>Inventory App</span>
+              <img 
+                src="/logo.png" 
+                alt="Stockkeyper" 
+                className="h-20 w-auto object-contain"
+                style={{ minHeight: '60px', maxHeight: '80px' }}
+              />
             </Link>
             {renderNavLinks(true)}
             <div className="mt-4 flex flex-col gap-2">
@@ -187,7 +192,12 @@ const Navbar = () => {
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
       <nav className="hidden flex-col gap-6 text-lg font-medium md:flex md:flex-row md:items-center md:gap-5 md:text-sm lg:gap-6">
         <Link to="/" className="flex items-center gap-2 text-lg font-semibold">
-          <span>Inventory App</span>
+          <img 
+            src="/logo.png" 
+            alt="Stockkeyper" 
+            className="h-20 w-auto object-contain"
+            style={{ minHeight: '60px', maxHeight: '80px' }}
+          />
         </Link>
         {renderNavLinks()}
       </nav>
