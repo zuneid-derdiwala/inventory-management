@@ -96,11 +96,12 @@ export function MultiSelect({
                     }}
                   >
                     <span className="max-w-[120px] truncate">{option}</span>
-                    <button
-                      type="button"
-                      className="ml-1.5 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-muted -mr-0.5"
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="ml-1.5 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-muted -mr-0.5 cursor-pointer inline-flex items-center justify-center"
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") {
+                        if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
                           e.stopPropagation();
                           handleRemove(option, e as any);
@@ -113,7 +114,7 @@ export function MultiSelect({
                       onClick={(e) => handleRemove(option, e)}
                     >
                       <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                    </button>
+                    </span>
                   </Badge>
                 ))}
                 {remainingCount > 0 && (

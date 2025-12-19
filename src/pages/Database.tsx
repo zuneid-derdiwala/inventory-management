@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -24,6 +24,7 @@ const Database = () => {
   const { database, deleteEntry, availableBrands, isLoadingData, getModelsByBrand } = useData();
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // State for all data (for admin users)
   const [allData, setAllData] = useState<EntryData[]>([]);
@@ -111,6 +112,27 @@ const Database = () => {
   // Track page navigation
   useEffect(() => {
     localStorage.setItem('lastVisitedPage', 'database');
+  }, []);
+
+  // Clear filters when component unmounts (user navigates away from database page)
+  useEffect(() => {
+    return () => {
+      // Clear all filter states when component unmounts
+      setSelectedIMEIs([]);
+      setSelectedOutwardDates([]);
+      setSelectedBrands([]);
+      setSelectedModels([]);
+      setSelectedBookingPersons([]);
+      setSelectedBuyers([]);
+      
+      // Clear localStorage
+      localStorage.removeItem('database_selectedIMEIs');
+      localStorage.removeItem('database_selectedOutwardDates');
+      localStorage.removeItem('database_selectedBrands');
+      localStorage.removeItem('database_selectedModels');
+      localStorage.removeItem('database_selectedBookingPersons');
+      localStorage.removeItem('database_selectedBuyers');
+    };
   }, []);
 
   // Save multi-select filter state to localStorage
@@ -353,44 +375,94 @@ const Database = () => {
     return Array.from(bookingPersonsSet).sort();
   }, [dataSource]);
 
+  // Pre-compute formatted dates and filter sets for performance
+  const formattedDatesMap = useMemo(() => {
+    const map = new Map<EntryData, string>();
+    dataSource.forEach(entry => {
+      if (entry.outwardDate) {
+        map.set(entry, format(entry.outwardDate, "dd/MM/yyyy"));
+      }
+    });
+    return map;
+  }, [dataSource]);
+
+  // Convert filter arrays to Sets for O(1) lookups
+  const selectedIMEIsSet = useMemo(() => new Set(selectedIMEIs), [selectedIMEIs]);
+  const selectedOutwardDatesSet = useMemo(() => new Set(selectedOutwardDates), [selectedOutwardDates]);
+  const selectedBrandsSet = useMemo(() => new Set(selectedBrands), [selectedBrands]);
+  const selectedModelsSet = useMemo(() => new Set(selectedModels), [selectedModels]);
+  const selectedBookingPersonsSet = useMemo(() => new Set(selectedBookingPersons), [selectedBookingPersons]);
+  const selectedBuyersSet = useMemo(() => new Set(selectedBuyers), [selectedBuyers]);
+
+  // Check if any filters are active (for early exit)
+  const hasActiveFilters = useMemo(() => {
+    return selectedIMEIs.length > 0 || selectedOutwardDates.length > 0 || 
+           selectedBrands.length > 0 || selectedModels.length > 0 || 
+           selectedBookingPersons.length > 0 || selectedBuyers.length > 0;
+  }, [selectedIMEIs.length, selectedOutwardDates.length, selectedBrands.length, 
+      selectedModels.length, selectedBookingPersons.length, selectedBuyers.length]);
+
   // Filter ALL data first (not just current page)
   // This ensures filters work on the complete dataset
   const filteredData = useMemo(() => {
+    // Early exit if no filters
+    if (!hasActiveFilters) {
+      return dataSource;
+    }
+
     return dataSource.filter(entry => {
-      // IMEI filter (multi-select)
-      const matchesIMEI = selectedIMEIs.length === 0 || 
-        (entry.imei && selectedIMEIs.includes(entry.imei));
-
-      // Outward Date filter (multi-select) - matches outward date only
-      const matchesOutwardDate = selectedOutwardDates.length === 0 || 
-        (entry.outwardDate && selectedOutwardDates.includes(format(entry.outwardDate, "dd/MM/yyyy")));
-
-      // Brand filter (multi-select)
-      const matchesBrand = selectedBrands.length === 0 || 
-        (entry.brand && selectedBrands.includes(entry.brand));
-
-      // Model filter (multi-select)
-      const matchesModel = selectedModels.length === 0 || 
-        (entry.model && selectedModels.includes(entry.model));
-
-      // Booking Person filter (multi-select)
-      const matchesBookingPerson = selectedBookingPersons.length === 0 || 
-        (entry.bookingPerson && selectedBookingPersons.includes(entry.bookingPerson));
-
-      // Buyer filter (multi-select)
-      const matchesBuyer = selectedBuyers.length === 0 || 
-        (entry.buyer && selectedBuyers.includes(entry.buyer));
-
-      // An entry matches if it satisfies all filters
-      // If all filters are empty, all entries are shown.
-      if (selectedIMEIs.length === 0 && selectedOutwardDates.length === 0 && selectedBrands.length === 0 && 
-          selectedModels.length === 0 && selectedBookingPersons.length === 0 && selectedBuyers.length === 0) {
-        return true;
+      // Short-circuit evaluation - check filters in order of likely selectivity
+      
+      // IMEI filter (multi-select) - usually most selective
+      if (selectedIMEIsSet.size > 0) {
+        if (!entry.imei || !selectedIMEIsSet.has(entry.imei)) {
+          return false;
+        }
       }
 
-      return matchesIMEI && matchesOutwardDate && matchesBrand && matchesModel && matchesBookingPerson && matchesBuyer;
+      // Brand filter (multi-select)
+      if (selectedBrandsSet.size > 0) {
+        if (!entry.brand || !selectedBrandsSet.has(entry.brand)) {
+          return false;
+        }
+      }
+
+      // Model filter (multi-select)
+      if (selectedModelsSet.size > 0) {
+        if (!entry.model || !selectedModelsSet.has(entry.model)) {
+          return false;
+        }
+      }
+
+      // Booking Person filter (multi-select)
+      if (selectedBookingPersonsSet.size > 0) {
+        if (!entry.bookingPerson || !selectedBookingPersonsSet.has(entry.bookingPerson)) {
+          return false;
+        }
+      }
+
+      // Buyer filter (multi-select)
+      if (selectedBuyersSet.size > 0) {
+        if (!entry.buyer || !selectedBuyersSet.has(entry.buyer)) {
+          return false;
+        }
+      }
+
+      // Outward Date filter (multi-select) - check last as date formatting is more expensive
+      if (selectedOutwardDatesSet.size > 0) {
+        if (!entry.outwardDate) {
+          return false;
+        }
+        const formattedDate = formattedDatesMap.get(entry);
+        if (!formattedDate || !selectedOutwardDatesSet.has(formattedDate)) {
+          return false;
+        }
+      }
+
+      return true;
     });
-  }, [dataSource, selectedIMEIs, selectedOutwardDates, selectedBrands, selectedModels, selectedBookingPersons, selectedBuyers]);
+  }, [dataSource, hasActiveFilters, selectedIMEIsSet, selectedOutwardDatesSet, 
+      selectedBrandsSet, selectedModelsSet, selectedBookingPersonsSet, selectedBuyersSet, formattedDatesMap]);
 
   // Pagination calculations
   // After filtering ALL data, show only 20 records per page
@@ -477,21 +549,14 @@ const Database = () => {
     return Array.from(imeis).sort();
   }, [dataSource]);
 
-  // Outward Date options (only outward dates)
+  // Outward Date options (only outward dates) - reuse formatted dates map for performance
   const availableOutwardDates = useMemo(() => {
     const dates = new Set<string>();
-    dataSource.forEach(entry => {
-      if (entry.outwardDate) {
-        try {
-          const dateStr = format(entry.outwardDate, "dd/MM/yyyy");
-          if (dateStr) dates.add(dateStr);
-        } catch (e) {
-          // Invalid date, skip
-        }
-      }
+    formattedDatesMap.forEach((formattedDate) => {
+      if (formattedDate) dates.add(formattedDate);
     });
     return Array.from(dates).sort();
-  }, [dataSource]);
+  }, [formattedDatesMap]);
 
 
   if (isLoadingData || (isAdmin && isLoadingAllData)) {

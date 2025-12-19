@@ -131,15 +131,18 @@ const Index = () => {
       try {
         setIsLoadingAnalytics(true);
         
-        // Build base query
+        // Build base query - only fetch columns needed for analytics
         let entriesQuery = supabase
           .from("entries")
           .select(`
-            *,
             booking_person_id,
             booking_persons:booking_person_id(name),
             brand_id,
-            brands:brand_id(name)
+            brands:brand_id(name),
+            outward_date,
+            outward_amount,
+            inward_amount,
+            inward_date
           `);
 
         // Filter by user_id if not admin
@@ -158,58 +161,91 @@ const Index = () => {
           return;
         }
 
-        if (!entries) {
+        if (!entries || entries.length === 0) {
+          setAnalytics({
+            totalBooked: 0,
+            totalInStock: 0,
+            totalSold: 0,
+            totalRevenue: 0,
+            totalInvestment: 0,
+            recentEntries: 0,
+            topBookingPersons: [],
+            topBrands: [],
+          });
           setIsLoadingAnalytics(false);
           return;
         }
 
-        // Calculate analytics
-        const totalBooked = entries.filter(e => e.booking_person_id || e.booking_persons?.name).length;
-        const totalInStock = entries.filter(e => !e.outward_date).length;
-        const totalSold = entries.filter(e => e.outward_date).length;
-        
-        const totalRevenue = entries
-          .filter(e => e.outward_amount)
-          .reduce((sum, e) => sum + (parseFloat(e.outward_amount?.toString() || '0') || 0), 0);
-        
-        const totalInvestment = entries
-          .filter(e => e.inward_amount)
-          .reduce((sum, e) => sum + (parseFloat(e.inward_amount?.toString() || '0') || 0), 0);
-
-        // Recent entries (last 7 days) - based on inward_date
+        // Pre-calculate date threshold once
         const now = new Date();
         const sevenDaysAgo = new Date(now);
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        sevenDaysAgo.setHours(0, 0, 0, 0); // Start of day
-        
-        const recentEntries = entries.filter(e => {
-          if (!e.inward_date) return false;
-          const inwardDate = new Date(e.inward_date);
-          inwardDate.setHours(0, 0, 0, 0); // Normalize to start of day
-          return inwardDate >= sevenDaysAgo;
-        }).length;
+        sevenDaysAgo.setHours(0, 0, 0, 0);
 
-        // Top booking persons
+        // Single pass through entries for all calculations
+        let totalBooked = 0;
+        let totalInStock = 0;
+        let totalSold = 0;
+        let totalRevenue = 0;
+        let totalInvestment = 0;
+        let recentEntries = 0;
         const bookingPersonMap = new Map<string, number>();
+        const brandMap = new Map<string, number>();
+
         entries.forEach(e => {
-          const name = e.booking_persons?.name || e.booking_person;
-          if (name) {
-            bookingPersonMap.set(name, (bookingPersonMap.get(name) || 0) + 1);
+          // Count booked
+          if (e.booking_person_id || e.booking_persons?.name) {
+            totalBooked++;
+          }
+
+          // Count in stock vs sold
+          if (e.outward_date) {
+            totalSold++;
+          } else {
+            totalInStock++;
+          }
+
+          // Sum revenue
+          if (e.outward_amount) {
+            const amount = parseFloat(e.outward_amount?.toString() || '0') || 0;
+            totalRevenue += amount;
+          }
+
+          // Sum investment
+          if (e.inward_amount) {
+            const amount = parseFloat(e.inward_amount?.toString() || '0') || 0;
+            totalInvestment += amount;
+          }
+
+          // Count recent entries
+          if (e.inward_date) {
+            const inwardDate = new Date(e.inward_date);
+            inwardDate.setHours(0, 0, 0, 0);
+            if (inwardDate >= sevenDaysAgo) {
+              recentEntries++;
+            }
+          }
+
+          // Track booking persons
+          const bookingPersonName = e.booking_persons?.name || e.booking_person;
+          if (bookingPersonName) {
+            bookingPersonMap.set(bookingPersonName, (bookingPersonMap.get(bookingPersonName) || 0) + 1);
+          }
+
+          // Track brands
+          const brandName = e.brands?.name || e.brand;
+          if (brandName) {
+            brandMap.set(brandName, (brandMap.get(brandName) || 0) + 1);
           }
         });
+
+        // Get top booking persons
         const topBookingPersons = Array.from(bookingPersonMap.entries())
           .map(([name, count]) => ({ name, count }))
           .sort((a, b) => b.count - a.count)
           .slice(0, 5);
 
-        // Top brands
-        const brandMap = new Map<string, number>();
-        entries.forEach(e => {
-          const name = e.brands?.name || e.brand;
-          if (name) {
-            brandMap.set(name, (brandMap.get(name) || 0) + 1);
-          }
-        });
+        // Get top brands
         const topBrands = Array.from(brandMap.entries())
           .map(([name, count]) => ({ name, count }))
           .sort((a, b) => b.count - a.count)
@@ -425,7 +461,15 @@ const Index = () => {
                   {analytics.topBookingPersons.length > 0 ? (
                     <div className="space-y-2 sm:space-y-4">
                       {analytics.topBookingPersons.map((person, index) => (
-                        <div key={person.name} className="flex items-center justify-between p-2 sm:p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                        <div 
+                          key={person.name} 
+                          className="flex items-center justify-between p-2 sm:p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                          onClick={() => {
+                            // Set filter in localStorage and navigate to database
+                            localStorage.setItem('database_selectedBookingPersons', JSON.stringify([person.name]));
+                            navigate('/database');
+                          }}
+                        >
                           <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                             <div className={`flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full text-xs sm:text-sm font-bold text-white flex-shrink-0 ${
                               index === 0 ? 'bg-gradient-to-br from-yellow-400 to-orange-500' :
@@ -435,7 +479,7 @@ const Index = () => {
                             } shadow-md`}>
                               {index + 1}
                             </div>
-                            <span className="font-semibold text-sm sm:text-base truncate">{sanitizeUserInput(person.name)}</span>
+                            <span className="font-semibold text-sm sm:text-base truncate text-primary hover:underline">{sanitizeUserInput(person.name)}</span>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-xs sm:text-sm font-medium bg-primary/10 px-2 sm:px-3 py-1 rounded-full whitespace-nowrap">{person.count} mobiles</span>
@@ -467,7 +511,15 @@ const Index = () => {
                   {analytics.topBrands.length > 0 ? (
                     <div className="space-y-2 sm:space-y-4">
                       {analytics.topBrands.map((brand, index) => (
-                        <div key={brand.name} className="flex items-center justify-between p-2 sm:p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                        <div 
+                          key={brand.name} 
+                          className="flex items-center justify-between p-2 sm:p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                          onClick={() => {
+                            // Set filter in localStorage and navigate to database
+                            localStorage.setItem('database_selectedBrands', JSON.stringify([brand.name]));
+                            navigate('/database');
+                          }}
+                        >
                           <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                             <div className={`flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full text-xs sm:text-sm font-bold text-white flex-shrink-0 ${
                               index === 0 ? 'bg-gradient-to-br from-yellow-400 to-orange-500' :
@@ -477,7 +529,7 @@ const Index = () => {
                             } shadow-md`}>
                               {index + 1}
                             </div>
-                            <span className="font-semibold text-sm sm:text-base truncate">{sanitizeUserInput(brand.name)}</span>
+                            <span className="font-semibold text-sm sm:text-base truncate text-primary hover:underline">{sanitizeUserInput(brand.name)}</span>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-xs sm:text-sm font-medium bg-primary/10 px-2 sm:px-3 py-1 rounded-full whitespace-nowrap">{brand.count} mobiles</span>

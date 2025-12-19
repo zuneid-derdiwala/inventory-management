@@ -31,8 +31,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const timeoutCheckRef = useRef<NodeJS.Timeout | null>(null);
   const userRef = useRef<User | null>(null);
   
-  // 12 hours in milliseconds
-  const SESSION_TIMEOUT = 12 * 60 * 60 * 1000;
+  // 14 hours in milliseconds
+  const SESSION_TIMEOUT = 14 * 60 * 60 * 1000;
 
   // Ensure profile exists for the user
   // Note: The database trigger should create the profile automatically
@@ -123,11 +123,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Helper function to get/set login time from localStorage
+  const getStoredLoginTime = (userId: string): number | null => {
+    try {
+      const stored = localStorage.getItem(`loginTime_${userId}`);
+      return stored ? parseInt(stored, 10) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const setStoredLoginTime = (userId: string, loginTime: number) => {
+    try {
+      localStorage.setItem(`loginTime_${userId}`, loginTime.toString());
+    } catch (error) {
+      console.error("Error storing login time:", error);
+    }
+  };
+
+  const clearStoredLoginTime = (userId: string) => {
+    try {
+      localStorage.removeItem(`loginTime_${userId}`);
+    } catch (error) {
+      console.error("Error clearing login time:", error);
+    }
+  };
+
   // Sign out function (defined early so it can be used in timeout check)
   const handleSignOut = async () => {
     try {
       setLoading(true);
-      loginTimeRef.current = null; // Clear login time on logout
+      // Clear login time on logout
+      if (user?.id) {
+        clearStoredLoginTime(user.id);
+      }
+      loginTimeRef.current = null;
       if (timeoutCheckRef.current) {
         clearInterval(timeoutCheckRef.current);
         timeoutCheckRef.current = null;
@@ -151,16 +181,43 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     userRef.current = user;
   }, [user]);
 
-  // Check if session has expired (12 hours)
+  // Check if session has expired (14 hours)
   const checkSessionTimeout = useCallback(async () => {
-    if (!loginTimeRef.current || !userRef.current) return;
+    if (!userRef.current) {
+      console.log("Session timeout check skipped: no user");
+      return;
+    }
+    
+    // Get login time from localStorage (persistent across page reloads)
+    const storedLoginTime = getStoredLoginTime(userRef.current.id);
+    const loginTime = storedLoginTime || loginTimeRef.current;
+    
+    if (!loginTime) {
+      console.log("Session timeout check skipped: no login time");
+      return;
+    }
+    
+    // Update ref if we got it from storage
+    if (storedLoginTime && !loginTimeRef.current) {
+      loginTimeRef.current = storedLoginTime;
+    }
     
     const now = Date.now();
-    const timeSinceLogin = now - loginTimeRef.current;
+    const timeSinceLogin = now - loginTime;
+    const hoursSinceLogin = timeSinceLogin / (60 * 60 * 1000);
+    const hoursRemaining = (SESSION_TIMEOUT - timeSinceLogin) / (60 * 60 * 1000);
+    
+    // Log session status (only every 5th check to avoid spam)
+    if (Math.random() < 0.2) {
+      console.log(`Session check: ${hoursSinceLogin.toFixed(2)} hours since login, ${hoursRemaining.toFixed(2)} hours remaining`);
+    }
     
     if (timeSinceLogin >= SESSION_TIMEOUT) {
       // Session expired, logout user
-      console.log("Session expired after 12 hours, logging out...");
+      console.log("Session expired after 14 hours, logging out...");
+      if (userRef.current?.id) {
+        clearStoredLoginTime(userRef.current.id);
+      }
       loginTimeRef.current = null;
       if (timeoutCheckRef.current) {
         clearInterval(timeoutCheckRef.current);
@@ -172,7 +229,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSession(null);
         setUserRole(null);
         setIsAdmin(false);
-        showError("Your session has expired after 12 hours. Please log in again.");
+        showError("Your session has expired after 14 hours. Please log in again.");
       } catch (error) {
         console.error("Error signing out on timeout:", error);
       }
@@ -232,6 +289,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setUser(null);
             setUserRole(null);
             setIsAdmin(false);
+            if (session?.user?.id) {
+              clearStoredLoginTime(session.user.id);
+            }
             loginTimeRef.current = null;
             setLoading(false);
             return;
@@ -268,8 +328,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
           }
           
-          // Store login time when session is established
-          loginTimeRef.current = Date.now();
+          // Restore login time from storage if available (page refresh/reopen)
+          // Only set new time if this is a fresh session (no stored time)
+          const storedLoginTime = getStoredLoginTime(session.user.id);
+          if (storedLoginTime) {
+            loginTimeRef.current = storedLoginTime;
+            console.log("Login time restored from storage (initial session):", new Date(storedLoginTime).toLocaleString());
+          } else {
+            // This is a fresh login, set new login time
+            const loginTime = Date.now();
+            loginTimeRef.current = loginTime;
+            setStoredLoginTime(session.user.id, loginTime);
+            console.log("Login time set (initial session, fresh login):", new Date(loginTime).toLocaleString());
+          }
           
           // Ensure profile exists for the user
           ensureProfileExists(session.user.id, session.user.email).then(() => {
@@ -325,7 +396,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setSession(session);
           setUser(session?.user ?? null);
           if (session?.user) {
-            loginTimeRef.current = Date.now();
+            // Store login time when session is established (only on initial login, not on refresh)
+            const loginTime = Date.now();
+            loginTimeRef.current = loginTime;
+            setStoredLoginTime(session.user.id, loginTime);
+            console.log("Login time set (verification):", new Date(loginTime).toLocaleString());
             // Ensure profile exists
             ensureProfileExists(session.user.id, session.user.email).then(() => {
               fetchUserRole(session.user.id).catch(() => {
@@ -349,6 +424,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setUser(null);
             setUserRole(null);
             setIsAdmin(false);
+            if (session?.user?.id) {
+              clearStoredLoginTime(session.user.id);
+            }
             loginTimeRef.current = null;
             setLoading(false);
             
@@ -381,8 +459,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           }
           
           // Store login time when new session is established
-          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            loginTimeRef.current = Date.now();
+          // Only set on SIGNED_IN (actual login), NOT on TOKEN_REFRESHED (page refresh/reopen)
+          if (event === 'SIGNED_IN') {
+            const loginTime = Date.now();
+            loginTimeRef.current = loginTime;
+            setStoredLoginTime(session.user.id, loginTime);
+            console.log("Login time set (SIGNED_IN event):", new Date(loginTime).toLocaleString());
+          } else if (event === 'TOKEN_REFRESHED') {
+            // On token refresh, restore login time from storage if available
+            const storedLoginTime = getStoredLoginTime(session.user.id);
+            if (storedLoginTime) {
+              loginTimeRef.current = storedLoginTime;
+              console.log("Login time restored from storage (TOKEN_REFRESHED):", new Date(storedLoginTime).toLocaleString());
+            } else {
+              // If no stored time, this might be a very old session, set current time as fallback
+              const loginTime = Date.now();
+              loginTimeRef.current = loginTime;
+              setStoredLoginTime(session.user.id, loginTime);
+              console.log("Login time set (TOKEN_REFRESHED, no stored time):", new Date(loginTime).toLocaleString());
+            }
           }
           
           // Ensure profile exists for the user
@@ -698,6 +793,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // Ensure profile exists for the user
         await ensureProfileExists(data.user.id, data.user.email);
+        
+        // Set login time immediately after successful login
+        // This ensures the session timeout tracking starts right away
+        const loginTime = Date.now();
+        loginTimeRef.current = loginTime;
+        setStoredLoginTime(data.user.id, loginTime);
+        console.log("Login time set (signIn function):", new Date(loginTime).toLocaleString());
       }
 
       showSuccess("Welcome back!");
