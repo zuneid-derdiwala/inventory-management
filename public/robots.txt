@@ -1,14 +1,64 @@
+# robots.txt for Inventory Management System
+
+# Allow all search engines
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /signup
+Allow: /forgot-password
+Allow: /verify-email
+
+# Disallow private/protected routes
+Disallow: /entry-form
+Disallow: /stock-data
+Disallow: /database
+Disallow: /profile-settings
+Disallow: /manage-users
+Disallow: /manage-data
+Disallow: /assign-data
+Disallow: /reset-password
+
+# Disallow API routes
+Disallow: /api/
+
+# Allow specific bots with optimized settings
 User-agent: Googlebot
 Allow: /
+Crawl-delay: 1
 
 User-agent: Bingbot
 Allow: /
+Crawl-delay: 1
 
+User-agent: Slurp
+Allow: /
+Crawl-delay: 1
+
+# Social media bots (for link previews)
 User-agent: Twitterbot
 Allow: /
+Allow: /login
+Allow: /signup
 
 User-agent: facebookexternalhit
 Allow: /
+Allow: /login
+Allow: /signup
 
-User-agent: *
+User-agent: LinkedInBot
 Allow: /
+Allow: /login
+Allow: /signup
+
+# Block bad bots
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+# Sitemap location (update with your actual domain)
+# Sitemap: https://yourdomain.com/sitemap.xml
