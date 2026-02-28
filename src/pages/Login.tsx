@@ -10,7 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Eye, EyeOff, Mail, AlertCircle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { showError } from "@/utils/toast";
-import HCaptcha from "@hcaptcha/react-hcaptcha";
+// import HCaptcha from "@hcaptcha/react-hcaptcha";
 
 const Login = () => {
   const [usernameOrEmail, setUsernameOrEmail] = useState("");
@@ -22,11 +22,11 @@ const Login = () => {
   const [showVerificationAlert, setShowVerificationAlert] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [userEmail, setUserEmail] = useState("");
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const captchaRef = React.useRef<any>(null);
-  
-  const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY || "";
-  
+  // hCaptcha state (commented out)
+  // const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // const captchaRef = React.useRef<any>(null);
+  // const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY || "";
+
   const { signIn, resendVerificationEmail } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -46,34 +46,37 @@ const Login = () => {
     setError("");
     setShowVerificationAlert(false);
     
-    // Check if captcha is verified (only if site key is configured)
-    if (HCAPTCHA_SITE_KEY && !captchaToken) {
-      setError("Please complete the captcha verification");
-      return;
-    }
-    
+    // Check if captcha is verified (only if site key is configured) - commented out
+    // if (HCAPTCHA_SITE_KEY && !captchaToken) {
+    //   setError("Please complete the captcha verification");
+    //   return;
+    // }
+
     setIsLoading(true);
 
-    const result = await signIn(usernameOrEmail, password, captchaToken || undefined);
+    const result = await signIn(usernameOrEmail, password, undefined /* captchaToken */);
     
     if (result.success) {
-      // Reset captcha after successful login
-      if (captchaRef.current) {
-        captchaRef.current.resetCaptcha();
-        setCaptchaToken(null);
-      }
+      // Reset captcha after successful login - commented out
+      // if (captchaRef.current) {
+      //   captchaRef.current.resetCaptcha();
+      //   setCaptchaToken(null);
+      // }
       navigate("/");
     } else {
-      // Reset captcha on error so user can try again
-      if (captchaRef.current && result.error?.toLowerCase().includes('captcha')) {
-        captchaRef.current.resetCaptcha();
-        setCaptchaToken(null);
-      }
-      // Check if the error is about email verification
-      const isVerificationError = result.error?.toLowerCase().includes("verify") || 
-                                  result.error?.toLowerCase().includes("verification") ||
-                                  (result.error?.toLowerCase().includes("email") && 
-                                   result.error?.toLowerCase().includes("before signing in"));
+      // Reset captcha on error - commented out
+      // if (captchaRef.current && result.error?.toLowerCase().includes('captcha')) {
+      //   captchaRef.current.resetCaptcha();
+      //   setCaptchaToken(null);
+      // }
+      // Check if the error is about email verification (exclude captcha errors)
+      const isCaptchaError = result.error?.toLowerCase().includes("captcha");
+      const isVerificationError = !isCaptchaError && (
+        result.error?.toLowerCase().includes("verify") ||
+        result.error?.toLowerCase().includes("verification") ||
+        (result.error?.toLowerCase().includes("email") &&
+          result.error?.toLowerCase().includes("before signing in"))
+      );
       
       if (isVerificationError) {
         // Show verification alert instead of generic error
@@ -255,8 +258,8 @@ const Login = () => {
               </div>
             </div>
             
-            {/* hCaptcha */}
-            {HCAPTCHA_SITE_KEY && (
+            {/* hCaptcha - commented out */}
+            {/* {HCAPTCHA_SITE_KEY && (
               <div className="flex justify-center items-center py-4 w-full">
                 <div className="w-full max-w-[400px] flex justify-center">
                   <div className="transform scale-110 origin-center">
@@ -277,9 +280,9 @@ const Login = () => {
                   </div>
                 </div>
               </div>
-            )}
-            
-            <Button type="submit" className="w-full" disabled={isLoading || (HCAPTCHA_SITE_KEY && !captchaToken)}>
+            )} */}
+
+            <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

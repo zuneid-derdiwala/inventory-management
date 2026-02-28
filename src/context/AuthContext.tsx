@@ -31,8 +31,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const timeoutCheckRef = useRef<NodeJS.Timeout | null>(null);
   const userRef = useRef<User | null>(null);
   
-  // 14 hours in milliseconds
-  const SESSION_TIMEOUT = 14 * 60 * 60 * 1000;
+  // 6 hours in milliseconds
+  const SESSION_TIMEOUT = 6 * 60 * 60 * 1000;
+
+  // 30 days in milliseconds (for password expiry check)
+  const PASSWORD_EXPIRY_DAYS = 30;
 
   // Ensure profile exists for the user
   // Note: The database trigger should create the profile automatically
@@ -181,7 +184,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     userRef.current = user;
   }, [user]);
 
-  // Check if session has expired (14 hours)
+  // Check if session has expired (6 hours)
   const checkSessionTimeout = useCallback(async () => {
     if (!userRef.current) {
       console.log("Session timeout check skipped: no user");
@@ -214,7 +217,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     
     if (timeSinceLogin >= SESSION_TIMEOUT) {
       // Session expired, logout user
-      console.log("Session expired after 14 hours, logging out...");
+      console.log("Session expired after 6 hours, logging out...");
       if (userRef.current?.id) {
         clearStoredLoginTime(userRef.current.id);
       }
@@ -229,7 +232,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSession(null);
         setUserRole(null);
         setIsAdmin(false);
-        showError("Your session has expired after 14 hours. Please log in again.");
+        showError("Your session has expired after 6 hours. Please log in again.");
       } catch (error) {
         console.error("Error signing out on timeout:", error);
       }
@@ -587,14 +590,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { data, error } = await supabase.auth.signUp(signUpOptions);
 
       if (error) {
-        // Check if the error is about captcha
-        if (error.message.includes('captcha') || error.message.includes('Captcha') || 
-            error.code === 'captcha_failed' || error.message.includes('sitekey-secret-mismatch')) {
-          return { 
-            success: false, 
-            error: "Captcha verification failed. Please complete the captcha again and try signing up." 
-          };
-        }
+        // Captcha error handling commented out (HCaptcha removed from UI)
+        // if (error.message.includes('captcha') || ...) { return { error: "Captcha verification failed..." }; }
         return { success: false, error: error.message };
       }
 
@@ -605,9 +602,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await new Promise(resolve => setTimeout(resolve, 500));
         
         // Prepare update data
-        const updateData: any = { 
+        const updateData: any = {
           username: username.trim(),
-          role: 'user'
+          role: 'user',
+          password_changed_at: new Date().toISOString(),
         };
 
         // Add mobile and country_code if provided
@@ -733,15 +731,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { data, error } = await supabase.auth.signInWithPassword(signInOptions);
 
       if (error) {
-        // Check if the error is about captcha
-        if (error.message.includes('captcha') || error.message.includes('Captcha') || 
-            error.code === 'captcha_failed' || error.message.includes('sitekey-secret-mismatch')) {
-          return { 
-            success: false, 
-            error: "Captcha verification failed. Please complete the captcha again and try logging in." 
-          };
-        }
-        
+        // Captcha error handling commented out (HCaptcha removed from UI)
+        // if (error.message.includes('captcha') || ...) { return { error: "Captcha verification failed..." }; }
+
         // Check if the error is about email verification
         if (error.message.includes('Email not confirmed') || 
             error.message.toLowerCase().includes('email not confirmed') ||
@@ -793,7 +785,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // Ensure profile exists for the user
         await ensureProfileExists(data.user.id, data.user.email);
-        
+
+        // Check if password has expired (30 days)
+        const { data: profilePasswordData } = await supabase
+          .from('profiles')
+          .select('password_changed_at')
+          .eq('id', data.user.id)
+          .maybeSingle();
+
+        if (profilePasswordData?.password_changed_at) {
+          const passwordChangedAt = new Date(profilePasswordData.password_changed_at).getTime();
+          const daysSinceChange = (Date.now() - passwordChangedAt) / (1000 * 60 * 60 * 24);
+
+          if (daysSinceChange >= PASSWORD_EXPIRY_DAYS) {
+            // Sign out the user and redirect to password reset
+            await supabase.auth.signOut();
+            return {
+              success: false,
+              error: `Your password has expired. For security reasons, you must reset your password every ${PASSWORD_EXPIRY_DAYS} days. Please use "Forgot Password" to set a new password.`,
+            };
+          }
+        }
+
         // Set login time immediately after successful login
         // This ensures the session timeout tracking starts right away
         const loginTime = Date.now();

@@ -11,6 +11,7 @@ import { Loader2, ArrowLeft, CheckCircle, CheckCircle2, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { validatePasswordCriteria, calculatePasswordStrength } from "@/utils/passwordValidation";
+import { sha256Hex } from "@/utils/passwordHash";
 import { cn } from "@/lib/utils";
 
 const ResetPassword = () => {
@@ -159,7 +160,22 @@ const ResetPassword = () => {
     setIsLoading(true);
 
     try {
-      const { error } = await supabase.auth.updateUser({
+      // Check password history: don't allow reusing the last password
+      const passwordHash = await sha256Hex(password);
+      const { data: inHistory, error: checkError } = await supabase.rpc("check_password_in_history", {
+        p_password_hash: passwordHash,
+      });
+
+      if (checkError) {
+        console.error("Password history check failed:", checkError);
+        // Proceed with update if RPC/table not set up yet (e.g. migration not run)
+      } else if (inHistory === true) {
+        setError("You cannot reuse your last password. Please choose a different password.");
+        setIsLoading(false);
+        return;
+      }
+
+      const { data: updateData, error } = await supabase.auth.updateUser({
         password: password
       });
 
@@ -167,6 +183,19 @@ const ResetPassword = () => {
         setError(error.message);
         setIsLoading(false);
         return;
+      }
+
+      // Store this password in history so it can't be reused next time
+      await supabase.rpc("add_password_to_history", {
+        p_password_hash: passwordHash,
+      });
+
+      // Update password_changed_at in profiles table
+      if (updateData?.user?.id) {
+        await supabase
+          .from('profiles')
+          .update({ password_changed_at: new Date().toISOString() })
+          .eq('id', updateData.user.id);
       }
 
       setSuccess(true);

@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { validatePhoneNumber } from "@/utils/phoneValidation";
-import HCaptcha from "@hcaptcha/react-hcaptcha";
+// import HCaptcha from "@hcaptcha/react-hcaptcha";
 
 // Common country codes for mobile numbers
 const COUNTRY_CODES = [
@@ -90,11 +90,11 @@ const Signup = () => {
   const passwordCriteria = validatePasswordCriteria(password);
   const passwordStrength = calculatePasswordStrength(password);
   
-  // hCaptcha state
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const captchaRef = React.useRef<any>(null);
-  const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY || "";
-  
+  // hCaptcha state (commented out)
+  // const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // const captchaRef = React.useRef<any>(null);
+  // const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY || "";
+
   const { signUp } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -130,29 +130,29 @@ const Signup = () => {
       }
     }
 
-    // Check if captcha is verified (only if site key is configured)
-    if (HCAPTCHA_SITE_KEY && !captchaToken) {
-      setError("Please complete the captcha verification");
-      return;
-    }
+    // Check if captcha is verified (only if site key is configured) - commented out
+    // if (HCAPTCHA_SITE_KEY && !captchaToken) {
+    //   setError("Please complete the captcha verification");
+    //   return;
+    // }
 
     setIsLoading(true);
 
-    const result = await signUp(email, password, username, mobile.trim() || undefined, countryCode, captchaToken || undefined);
+    const result = await signUp(email, password, username, mobile.trim() || undefined, countryCode, undefined /* captchaToken */);
     
     if (result.success) {
-      // Reset captcha after successful signup
-      if (captchaRef.current) {
-        captchaRef.current.resetCaptcha();
-        setCaptchaToken(null);
-      }
+      // Reset captcha after successful signup - commented out
+      // if (captchaRef.current) {
+      //   captchaRef.current.resetCaptcha();
+      //   setCaptchaToken(null);
+      // }
       setSignupSuccess(true);
     } else {
-      // Reset captcha on error so user can try again
-      if (captchaRef.current && result.error?.toLowerCase().includes('captcha')) {
-        captchaRef.current.resetCaptcha();
-        setCaptchaToken(null);
-      }
+      // Reset captcha on error - commented out
+      // if (captchaRef.current && result.error?.toLowerCase().includes('captcha')) {
+      //   captchaRef.current.resetCaptcha();
+      //   setCaptchaToken(null);
+      // }
       setError(result.error || "Signup failed");
     }
     
@@ -511,8 +511,8 @@ const Signup = () => {
               )}
             </div>
             
-            {/* hCaptcha */}
-            {HCAPTCHA_SITE_KEY && (
+            {/* hCaptcha - commented out */}
+            {/* {HCAPTCHA_SITE_KEY && (
               <div className="flex justify-center items-center py-4 w-full">
                 <div className="w-full max-w-[400px] flex justify-center">
                   <div className="transform scale-110 origin-center">
@@ -533,9 +533,9 @@ const Signup = () => {
                   </div>
                 </div>
               </div>
-            )}
-            
-            <Button type="submit" className="w-full" disabled={isLoading || (HCAPTCHA_SITE_KEY && !captchaToken)}>
+            )} */}
+
+            <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
