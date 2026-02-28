@@ -75,7 +75,7 @@ export function useEntries({
       
       // Filter out soft-deleted entries (is_deleted = false or null)
       // Try to filter by is_deleted, but handle gracefully if column doesn't exist
-      query = query.eq('is_deleted', false);
+      query = query.eq('is_deleted', false).order('inward_date', { ascending: false });
       
       const response: any = await query.then((res: any) => res);
 
@@ -95,7 +95,8 @@ export function useEntries({
               models:model_id(name, brand_id),
               sellers:seller_id(name),
               booking_persons:booking_person_id(name)
-            `);
+            `)
+            .order('inward_date', { ascending: false });
           
           if (!isAdmin) {
             retryQuery = retryQuery.eq('user_id', user.id);

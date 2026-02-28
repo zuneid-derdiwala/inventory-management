@@ -173,7 +173,7 @@ const Database = () => {
         const { data, error } = await supabase
           .from("entries")
           .select("*")
-          .order("created_at", { ascending: false });
+          .order("inward_date", { ascending: false });
 
         if (error) {
           console.error("Error fetching all data:", { code: error.code, message: error.message });
@@ -193,7 +193,7 @@ const Database = () => {
             booking_persons:booking_person_id(name)
           `)
           .eq('is_deleted', false)
-          .order("created_at", { ascending: false });
+          .order("inward_date", { ascending: false });
         
         const { data: entriesWithJoins, error: joinError } = await entriesQuery;
 
@@ -209,7 +209,7 @@ const Database = () => {
                 sellers:seller_id(name),
                 booking_persons:booking_person_id(name)
               `)
-              .order("created_at", { ascending: false });
+              .order("inward_date", { ascending: false });
             
             if (retryError) {
               console.error("Error fetching entries with joins (retry):", { code: retryError.code, message: retryError.message });
@@ -520,7 +520,7 @@ const Database = () => {
       if (isAdmin) {
         setIsLoadingAllData(true);
         try {
-          const { data, error } = await supabase.from("entries").select("*");
+          const { data, error } = await supabase.from("entries").select("*").order("inward_date", { ascending: false });
           if (error) {
             console.error("Error fetching all data after delete:", { code: error.code, message: error.message });
           } else {
