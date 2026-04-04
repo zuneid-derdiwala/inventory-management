@@ -190,10 +190,14 @@ const EntryForm = () => {
     
     const foundEntry = await searchEntry(imei);
     if (foundEntry) {
-      // Ensure imei is always a string
+      // Ensure imei is always a string; coerce optional selects to "" so Radix Select stays controlled
       setFormData({
         ...foundEntry,
-        imei: String(foundEntry.imei || ''),
+        imei: String(foundEntry.imei || ""),
+        bookingPerson: foundEntry.bookingPerson?.trim() ?? "",
+        seller: foundEntry.seller?.trim() ?? "",
+        brand: foundEntry.brand?.trim() ?? "",
+        model: foundEntry.model?.trim() ?? "",
       });
       setIsUpdateDeleteEnabled(true);
       setIsDeviceInfoOpen(true);
@@ -276,6 +280,14 @@ const EntryForm = () => {
   const handleBookingPersonSelectChange = (value: string) => { // New handler for booking person
     setFormData((prev) => ({ ...prev, bookingPerson: value }));
   };
+
+  // Include current value so Radix Select can show selection when editing (join loaded before options, or name not in list yet)
+  const bookingPersonSelectOptions = React.useMemo(() => {
+    const set = new Set(availableBookingPersons);
+    const current = formData.bookingPerson?.trim();
+    if (current) set.add(current);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [availableBookingPersons, formData.bookingPerson]);
 
   // Get models for selected brand, including models from entries
   const modelsForSelectedBrand = React.useMemo(() => {
@@ -560,15 +572,15 @@ const EntryForm = () => {
                 <div className="grid gap-2">
                   <Label htmlFor="bookingPerson">Booking Person</Label>
                   <Select
-                    value={formData.bookingPerson}
-                    onValueChange={handleBookingPersonSelectChange} // Use new handler
+                    value={formData.bookingPerson ?? ""}
+                    onValueChange={handleBookingPersonSelectChange}
                   >
                     <SelectTrigger className="flex-grow">
                       <SelectValue placeholder="Select a booking person" />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableBookingPersons.length > 0 ? (
-                        availableBookingPersons.map((person) => (
+                      {bookingPersonSelectOptions.length > 0 ? (
+                        bookingPersonSelectOptions.map((person) => (
                           <SelectItem key={person} value={person}>
                             {person}
                           </SelectItem>

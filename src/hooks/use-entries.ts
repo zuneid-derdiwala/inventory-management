@@ -10,6 +10,7 @@ import {
   restoreCalendarDateFromStorage,
   serializeCalendarDateForSupabase,
 } from "@/utils/dateStorage";
+import { embeddedRelationName } from "@/utils/supabaseEmbedded";
 
 interface UseEntriesProps {
   addBrandToSupabase: (brand: string) => Promise<boolean>;
@@ -109,10 +110,12 @@ export function useEntries({
           } else {
             const fetchedData: EntryData[] = (retryResponse.data || []).map((item: any) => ({
               imei: item.imei,
-              brand: item.brands?.name || item.brand || undefined,
-              model: item.models?.name || item.model || undefined,
-              seller: item.sellers?.name || item.seller || undefined,
-              bookingPerson: item.booking_persons?.name || item.booking_person || undefined,
+              brand: embeddedRelationName(item.brands) || (typeof item.brand === "string" ? item.brand.trim() || undefined : undefined),
+              model: embeddedRelationName(item.models) || (typeof item.model === "string" ? item.model.trim() || undefined : undefined),
+              seller: embeddedRelationName(item.sellers) || (typeof item.seller === "string" ? item.seller.trim() || undefined : undefined),
+              bookingPerson:
+                embeddedRelationName(item.booking_persons) ||
+                (typeof item.booking_person === "string" ? item.booking_person.trim() || undefined : undefined),
               inwardDate: parseSupabaseCalendarDate(item.inward_date),
               inwardAmount: item.inward_amount,
               buyer: item.buyer,
@@ -130,10 +133,12 @@ export function useEntries({
         const fetchedData: EntryData[] = (response.data || []).map((item: any) => ({
           imei: item.imei,
           // Get name from joined table, fallback to direct field for backward compatibility
-          brand: item.brands?.name || item.brand || undefined,
-          model: item.models?.name || item.model || undefined,
-          seller: item.sellers?.name || item.seller || undefined,
-          bookingPerson: item.booking_persons?.name || item.booking_person || undefined,
+          brand: embeddedRelationName(item.brands) || (typeof item.brand === "string" ? item.brand.trim() || undefined : undefined),
+          model: embeddedRelationName(item.models) || (typeof item.model === "string" ? item.model.trim() || undefined : undefined),
+          seller: embeddedRelationName(item.sellers) || (typeof item.seller === "string" ? item.seller.trim() || undefined : undefined),
+          bookingPerson:
+            embeddedRelationName(item.booking_persons) ||
+            (typeof item.booking_person === "string" ? item.booking_person.trim() || undefined : undefined),
           inwardDate: parseSupabaseCalendarDate(item.inward_date),
           inwardAmount: item.inward_amount,
           buyer: item.buyer,
@@ -476,10 +481,18 @@ export function useEntries({
         showSuccess("Data found!");
         return {
           imei: response.data.imei,
-          brand: response.data.brands?.name || response.data.brand || undefined,
-          model: response.data.models?.name || response.data.model || undefined,
-          seller: response.data.sellers?.name || response.data.seller || undefined,
-          bookingPerson: response.data.booking_persons?.name || response.data.booking_person || undefined,
+          brand:
+            embeddedRelationName(response.data.brands) ||
+            (typeof response.data.brand === "string" ? response.data.brand.trim() || undefined : undefined),
+          model:
+            embeddedRelationName(response.data.models) ||
+            (typeof response.data.model === "string" ? response.data.model.trim() || undefined : undefined),
+          seller:
+            embeddedRelationName(response.data.sellers) ||
+            (typeof response.data.seller === "string" ? response.data.seller.trim() || undefined : undefined),
+          bookingPerson:
+            embeddedRelationName(response.data.booking_persons) ||
+            (typeof response.data.booking_person === "string" ? response.data.booking_person.trim() || undefined : undefined),
           inwardDate: parseSupabaseCalendarDate(response.data.inward_date),
           inwardAmount: response.data.inward_amount,
           buyer: response.data.buyer,

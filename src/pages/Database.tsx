@@ -20,6 +20,7 @@ import { EntryData } from "@/context/DataContext";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { sanitizeUserInput } from "@/utils/sanitize";
 import { parseSupabaseCalendarDate } from "@/utils/dateStorage";
+import { embeddedRelationName } from "@/utils/supabaseEmbedded";
 
 const Database = () => {
   const { database, deleteEntry, availableBrands, isLoadingData, getModelsByBrand } = useData();
@@ -218,10 +219,12 @@ const Database = () => {
               // Use entries without filter if is_deleted column doesn't exist
               const convertedData: EntryData[] = (entriesWithoutFilter || []).map((entry: any) => ({
                 imei: entry.imei || "",
-                brand: entry.brands?.name || entry.brand || undefined,
-                model: entry.models?.name || entry.model || undefined,
-                seller: entry.sellers?.name || entry.seller || undefined,
-                bookingPerson: entry.booking_persons?.name || entry.booking_person || undefined,
+                brand: embeddedRelationName(entry.brands) || (typeof entry.brand === "string" ? entry.brand.trim() || undefined : undefined),
+                model: embeddedRelationName(entry.models) || (typeof entry.model === "string" ? entry.model.trim() || undefined : undefined),
+                seller: embeddedRelationName(entry.sellers) || (typeof entry.seller === "string" ? entry.seller.trim() || undefined : undefined),
+                bookingPerson:
+                  embeddedRelationName(entry.booking_persons) ||
+                  (typeof entry.booking_person === "string" ? entry.booking_person.trim() || undefined : undefined),
                 inwardDate: parseSupabaseCalendarDate(entry.inward_date),
                 inwardAmount: entry.inward_amount || undefined,
                 buyer: entry.buyer || undefined,
@@ -239,10 +242,12 @@ const Database = () => {
         // Convert Supabase data to EntryData format
         const convertedData: EntryData[] = (entriesWithJoins || data || []).map((entry: any) => ({
           imei: entry.imei || "",
-          brand: entry.brands?.name || entry.brand || undefined,
-          model: entry.models?.name || entry.model || undefined,
-          seller: entry.sellers?.name || entry.seller || undefined,
-          bookingPerson: entry.booking_persons?.name || entry.booking_person || undefined,
+          brand: embeddedRelationName(entry.brands) || (typeof entry.brand === "string" ? entry.brand.trim() || undefined : undefined),
+          model: embeddedRelationName(entry.models) || (typeof entry.model === "string" ? entry.model.trim() || undefined : undefined),
+          seller: embeddedRelationName(entry.sellers) || (typeof entry.seller === "string" ? entry.seller.trim() || undefined : undefined),
+          bookingPerson:
+            embeddedRelationName(entry.booking_persons) ||
+            (typeof entry.booking_person === "string" ? entry.booking_person.trim() || undefined : undefined),
           inwardDate: parseSupabaseCalendarDate(entry.inward_date),
           inwardAmount: entry.inward_amount || undefined,
           buyer: entry.buyer || undefined,
