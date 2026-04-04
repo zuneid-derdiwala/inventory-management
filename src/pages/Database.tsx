@@ -19,6 +19,7 @@ import { supabase } from "@/lib/supabase";
 import { EntryData } from "@/context/DataContext";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { sanitizeUserInput } from "@/utils/sanitize";
+import { parseSupabaseCalendarDate } from "@/utils/dateStorage";
 
 const Database = () => {
   const { database, deleteEntry, availableBrands, isLoadingData, getModelsByBrand } = useData();
@@ -221,10 +222,10 @@ const Database = () => {
                 model: entry.models?.name || entry.model || undefined,
                 seller: entry.sellers?.name || entry.seller || undefined,
                 bookingPerson: entry.booking_persons?.name || entry.booking_person || undefined,
-                inwardDate: entry.inward_date ? new Date(entry.inward_date) : undefined,
+                inwardDate: parseSupabaseCalendarDate(entry.inward_date),
                 inwardAmount: entry.inward_amount || undefined,
                 buyer: entry.buyer || undefined,
-                outwardDate: entry.outward_date ? new Date(entry.outward_date) : undefined,
+                outwardDate: parseSupabaseCalendarDate(entry.outward_date),
                 outwardAmount: entry.outward_amount || undefined,
               }));
               setAllData(convertedData);
@@ -242,10 +243,10 @@ const Database = () => {
           model: entry.models?.name || entry.model || undefined,
           seller: entry.sellers?.name || entry.seller || undefined,
           bookingPerson: entry.booking_persons?.name || entry.booking_person || undefined,
-          inwardDate: entry.inward_date ? new Date(entry.inward_date) : undefined,
+          inwardDate: parseSupabaseCalendarDate(entry.inward_date),
           inwardAmount: entry.inward_amount || undefined,
           buyer: entry.buyer || undefined,
-          outwardDate: entry.outward_date ? new Date(entry.outward_date) : undefined,
+          outwardDate: parseSupabaseCalendarDate(entry.outward_date),
           outwardAmount: entry.outward_amount || undefined,
         }));
 

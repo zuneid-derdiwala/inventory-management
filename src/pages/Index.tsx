@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { sanitizeUrl, sanitizeUserInput } from "@/utils/sanitize";
+import { parseSupabaseCalendarDate } from "@/utils/dateStorage";
 
 const Index = () => {
   const { isLoadingData } = useData();
@@ -217,11 +218,10 @@ const Index = () => {
             totalInvestment += amount;
           }
 
-          // Count recent entries
+          // Count recent entries (calendar day in local TZ, consistent with stored timestamptz)
           if (e.inward_date) {
-            const inwardDate = new Date(e.inward_date);
-            inwardDate.setHours(0, 0, 0, 0);
-            if (inwardDate >= sevenDaysAgo) {
+            const inwardDate = parseSupabaseCalendarDate(e.inward_date);
+            if (inwardDate && inwardDate >= sevenDaysAgo) {
               recentEntries++;
             }
           }

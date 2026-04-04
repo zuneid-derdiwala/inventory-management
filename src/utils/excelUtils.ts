@@ -3,18 +3,7 @@ import { saveAs } from "file-saver";
 import { EntryData } from "@/context/DataContext";
 import { showError, showSuccess } from "./toast";
 import { format } from "date-fns";
-
-// Helper to convert Excel date number to Date object
-const excelDateToJSDate = (excelDate: number): Date | undefined => {
-  if (typeof excelDate !== 'number' || isNaN(excelDate)) {
-    return undefined;
-  }
-  // Excel dates are days since 1900-01-01 (with 1900-02-29 bug)
-  // JavaScript dates are milliseconds since 1970-01-01
-  const date = new Date(Math.round((excelDate - 25569) * 86400 * 1000));
-  // Check for valid date
-  return isNaN(date.getTime()) ? undefined : date;
-};
+import { excelSerialToLocalCalendarDate, parseSupabaseCalendarDate } from "@/utils/dateStorage";
 
 
 export const readExcelFile = (file: File): Promise<EntryData[]> => {
@@ -141,24 +130,20 @@ export const readExcelFile = (file: File): Promise<EntryData[]> => {
               // Check if it's a date serial number (typically 1-100000) or an amount (larger numbers)
               // Date serial numbers are typically between 1 and ~100000 (for dates up to year 2174)
               if (inwardDateValue > 1 && inwardDateValue < 100000) {
-                entry.inwardDate = excelDateToJSDate(inwardDateValue);
+                entry.inwardDate = excelSerialToLocalCalendarDate(inwardDateValue);
               }
               // If >= 100000, it's likely an amount, not a date
             } else if (typeof inwardDateValue === 'string' && inwardDateValue.trim() !== '') {
-              // Try to parse as date string
-              const parsedDate = new Date(inwardDateValue);
-              if (!isNaN(parsedDate.getTime())) {
-                entry.inwardDate = parsedDate;
-              } else {
-                // Try parsing as dd/MM/yyyy or dd-MM-yyyy
-                const dateMatch = inwardDateValue.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-                if (dateMatch) {
-                  const [, day, month, year] = dateMatch;
-                  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                  if (!isNaN(date.getTime())) {
-                    entry.inwardDate = date;
-                  }
+              const s = inwardDateValue.trim();
+              const dateMatch = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+              if (dateMatch) {
+                const [, day, month, year] = dateMatch;
+                const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+                if (!isNaN(date.getTime())) {
+                  entry.inwardDate = date;
                 }
+              } else {
+                entry.inwardDate = parseSupabaseCalendarDate(s);
               }
             }
           }
@@ -211,7 +196,7 @@ export const readExcelFile = (file: File): Promise<EntryData[]> => {
             if (typeof buyerValue === 'number') {
               // If it's a number in date range, it might be a date serial number
               if (buyerValue > 1 && buyerValue < 100000) {
-                const buyerDate = excelDateToJSDate(buyerValue);
+                const buyerDate = excelSerialToLocalCalendarDate(buyerValue);
                 entry.buyer = buyerDate ? format(buyerDate, "dd/MM/yyyy") : String(buyerValue);
               } else {
                 // Large number, treat as string
@@ -228,22 +213,19 @@ export const readExcelFile = (file: File): Promise<EntryData[]> => {
             const outwardDateValue = getCellValue(outwardDateCol);
             if (typeof outwardDateValue === 'number') {
               if (outwardDateValue > 1 && outwardDateValue < 100000) {
-                entry.outwardDate = excelDateToJSDate(outwardDateValue);
+                entry.outwardDate = excelSerialToLocalCalendarDate(outwardDateValue);
               }
             } else if (typeof outwardDateValue === 'string' && outwardDateValue.trim() !== '') {
-              const parsedDate = new Date(outwardDateValue);
-              if (!isNaN(parsedDate.getTime())) {
-                entry.outwardDate = parsedDate;
-              } else {
-                // Try parsing as dd/MM/yyyy or dd-MM-yyyy
-                const dateMatch = outwardDateValue.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-                if (dateMatch) {
-                  const [, day, month, year] = dateMatch;
-                  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                  if (!isNaN(date.getTime())) {
-                    entry.outwardDate = date;
-                  }
+              const s = outwardDateValue.trim();
+              const dateMatch = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+              if (dateMatch) {
+                const [, day, month, year] = dateMatch;
+                const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+                if (!isNaN(date.getTime())) {
+                  entry.outwardDate = date;
                 }
+              } else {
+                entry.outwardDate = parseSupabaseCalendarDate(s);
               }
             }
           }

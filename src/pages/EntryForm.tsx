@@ -10,6 +10,7 @@ import { Calendar as CalendarIcon, QrCode, ChevronDown, ArrowLeft } from "lucide
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
+import { normalizeToLocalCalendarDate } from "@/utils/dateStorage";
 import { cn } from "@/lib/utils";
 import { showSuccess, showError } from "@/utils/toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -133,7 +134,8 @@ const EntryForm = () => {
   };
 
   const handleDateChange = (date: Date | undefined, field: keyof EntryData) => {
-    setFormData((prev) => ({ ...prev, [field]: date }));
+    const normalized = date ? normalizeToLocalCalendarDate(date) : undefined;
+    setFormData((prev) => ({ ...prev, [field]: normalized }));
     // Close the date picker after selection
     if (field === "inwardDate") {
       setIsInwardDatePickerOpen(false);

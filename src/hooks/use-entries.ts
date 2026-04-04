@@ -5,6 +5,11 @@ import { showError, showSuccess, showLoading, dismissToast } from "@/utils/toast
 import { EntryData } from "@/context/DataContext";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import {
+  parseSupabaseCalendarDate,
+  restoreCalendarDateFromStorage,
+  serializeCalendarDateForSupabase,
+} from "@/utils/dateStorage";
 
 interface UseEntriesProps {
   addBrandToSupabase: (brand: string) => Promise<boolean>;
@@ -17,13 +22,6 @@ interface UseEntriesProps {
   getBookingPersonIdByName?: (name: string) => string | undefined;
   refreshDependencies?: () => Promise<void>; // Optional function to refresh brands/models/sellers/booking_persons
 }
-
-// Helper to convert Supabase ISO string to Date object
-const parseSupabaseDate = (dateString: string | null): Date | undefined => {
-  if (!dateString) return undefined;
-  const date = new Date(dateString);
-  return isNaN(date.getTime()) ? undefined : date;
-};
 
 export function useEntries({
   addBrandToSupabase,
@@ -115,10 +113,10 @@ export function useEntries({
               model: item.models?.name || item.model || undefined,
               seller: item.sellers?.name || item.seller || undefined,
               bookingPerson: item.booking_persons?.name || item.booking_person || undefined,
-              inwardDate: parseSupabaseDate(item.inward_date),
+              inwardDate: parseSupabaseCalendarDate(item.inward_date),
               inwardAmount: item.inward_amount,
               buyer: item.buyer,
-              outwardDate: parseSupabaseDate(item.outward_date),
+              outwardDate: parseSupabaseCalendarDate(item.outward_date),
               outwardAmount: item.outward_amount,
             }));
             setDatabase(fetchedData);
@@ -136,10 +134,10 @@ export function useEntries({
           model: item.models?.name || item.model || undefined,
           seller: item.sellers?.name || item.seller || undefined,
           bookingPerson: item.booking_persons?.name || item.booking_person || undefined,
-          inwardDate: parseSupabaseDate(item.inward_date),
+          inwardDate: parseSupabaseCalendarDate(item.inward_date),
           inwardAmount: item.inward_amount,
           buyer: item.buyer,
-          outwardDate: parseSupabaseDate(item.outward_date),
+          outwardDate: parseSupabaseCalendarDate(item.outward_date),
           outwardAmount: item.outward_amount,
         }));
         setDatabase(fetchedData);
@@ -153,8 +151,8 @@ export function useEntries({
           // Convert date strings back to Date objects
           const entriesWithDates: EntryData[] = parsedEntries.map((entry: any) => ({
             ...entry,
-            inwardDate: entry.inwardDate ? new Date(entry.inwardDate) : undefined,
-            outwardDate: entry.outwardDate ? new Date(entry.outwardDate) : undefined,
+            inwardDate: restoreCalendarDateFromStorage(entry.inwardDate),
+            outwardDate: restoreCalendarDateFromStorage(entry.outwardDate),
           }));
           setDatabase(entriesWithDates);
         } catch (e) {
@@ -238,10 +236,10 @@ export function useEntries({
         model_id: modelId || null,
         seller_id: sellerId || null,
         booking_person_id: bookingPersonId || null,
-        inward_date: entry.inwardDate?.toISOString() || null,
+        inward_date: serializeCalendarDateForSupabase(entry.inwardDate),
         inward_amount: entry.inwardAmount ?? null,
         buyer: entry.buyer || null,
-        outward_date: entry.outwardDate?.toISOString() || null,
+        outward_date: serializeCalendarDateForSupabase(entry.outwardDate),
         outward_amount: entry.outwardAmount ?? null,
         user_id: user.id, // Use user.id directly (already verified above)
       }).select();
@@ -399,10 +397,10 @@ export function useEntries({
               model_id: modelId || null,
               seller_id: sellerId || null,
               booking_person_id: bookingPersonId || null,
-              inward_date: entry.inwardDate?.toISOString() || null,
+              inward_date: serializeCalendarDateForSupabase(entry.inwardDate),
               inward_amount: entry.inwardAmount ?? null,
               buyer: entry.buyer || null,
-              outward_date: entry.outwardDate?.toISOString() || null,
+              outward_date: serializeCalendarDateForSupabase(entry.outwardDate),
               outward_amount: entry.outwardAmount ?? null,
               user_id: user?.id,
             };
@@ -482,10 +480,10 @@ export function useEntries({
           model: response.data.models?.name || response.data.model || undefined,
           seller: response.data.sellers?.name || response.data.seller || undefined,
           bookingPerson: response.data.booking_persons?.name || response.data.booking_person || undefined,
-          inwardDate: parseSupabaseDate(response.data.inward_date),
+          inwardDate: parseSupabaseCalendarDate(response.data.inward_date),
           inwardAmount: response.data.inward_amount,
           buyer: response.data.buyer,
-          outwardDate: parseSupabaseDate(response.data.outward_date),
+          outwardDate: parseSupabaseCalendarDate(response.data.outward_date),
           outwardAmount: response.data.outward_amount,
         };
       } else {
@@ -524,10 +522,10 @@ export function useEntries({
         model_id: modelId !== undefined ? (modelId || null) : undefined,
         seller_id: sellerId !== undefined ? (sellerId || null) : undefined,
         booking_person_id: bookingPersonId !== undefined ? (bookingPersonId || null) : undefined,
-        inward_date: entry.inwardDate?.toISOString() || null,
+        inward_date: serializeCalendarDateForSupabase(entry.inwardDate),
         inward_amount: entry.inwardAmount ?? null,
         buyer: entry.buyer || null,
-        outward_date: entry.outwardDate?.toISOString() || null,
+        outward_date: serializeCalendarDateForSupabase(entry.outwardDate),
         outward_amount: entry.outwardAmount ?? null,
       }).eq("imei", entry.imei);
 

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, ChevronRight, Edit, Trash2 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { format } from "date-fns";
 
 
 const StockData = () => {
@@ -612,7 +613,7 @@ const StockData = () => {
                                   <div>
                                     <span className="font-medium text-muted-foreground">Inward Date:</span>
                                     <span className="ml-2 text-foreground">
-                                      {entry.inwardDate ? new Date(entry.inwardDate).toLocaleDateString() : 'N/A'}
+                                      {entry.inwardDate ? format(entry.inwardDate, "dd/MM/yyyy") : "N/A"}
                                     </span>
                                   </div>
                                   <div>
@@ -622,7 +623,7 @@ const StockData = () => {
                                   <div>
                                     <span className="font-medium text-muted-foreground">Outward Date:</span>
                                     <span className="ml-2 text-foreground">
-                                      {entry.outwardDate ? new Date(entry.outwardDate).toLocaleDateString() : 'N/A'}
+                                      {entry.outwardDate ? format(entry.outwardDate, "dd/MM/yyyy") : "N/A"}
                                     </span>
                                   </div>
                                   <div>
