@@ -2,6 +2,17 @@
 
 This guide explains how to configure environment variables in Vercel for your inventory management application.
 
+## Deployment overview
+
+| Piece | How it deploys |
+|--------|----------------|
+| **Frontend** | Static build (`npm run build` → `dist/`). Connect the Git repo to [Vercel](https://vercel.com); each push can auto-deploy. `vercel.json` SPA rewrites send all routes to `index.html`. |
+| **Backend / DB** | [Supabase](https://supabase.com) (hosted). You only configure URLs and the anon key in Vercel env vars. |
+| **Auth redirects** | In Supabase Dashboard → Authentication → URL configuration, add your production site URL (e.g. `https://your-domain.vercel.app`) and paths like `/reset-password`, `/verify-email`. |
+| **Groq (Chat)** | Chat calls **`/api/groq-chat`** and **`/api/groq-models`** (Vercel Edge). Set **`GROQ_API_KEY`** in Vercel (server only). Enable the UI with **`GROQ_ENABLED=true`** or **`VITE_GROQ_ENABLED=true`** at **build** time. Details: [GROQ.md](./GROQ.md). |
+
+Deploy command locally (same as CI): `npm run build`, then upload `dist/` or let Vercel run that on build.
+
 ## Required Environment Variables
 
 Your application needs the following environment variables:
@@ -101,11 +112,19 @@ After deployment, verify that the environment variables are working:
 
 ## Important Notes
 
-### Vite Environment Variables
+### Vite environment variables
 
-- **Prefix Required**: All environment variables used in Vite must be prefixed with `VITE_`
-- **Public Variables**: Variables prefixed with `VITE_` are exposed to the client-side code
-- **Build Time**: Environment variables are injected at build time, not runtime
+- **`VITE_*`**: Standard Vite client variables (e.g. Supabase).
+- **`GROQ_*` / `VITE_GROQ_*`**: Chat uses `vite.config.ts` **define** so `GROQ_ENABLED` / `GROQ_MODEL` (or `VITE_*` equivalents) are available to the client at build time. **`GROQ_API_KEY` is never `VITE_`** — it is only read by the dev proxy and by **`api/groq-chat.ts`** / **`api/groq-models.ts`** on Vercel.
+- **Build time**: Values are baked in at `npm run build` / Vercel build — change env in Vercel, then **redeploy**.
+
+### Groq in production (optional)
+
+If Chat is enabled on Vercel:
+
+1. Set **`GROQ_API_KEY`** for Production (and Preview if you want Chat there).
+2. Set **`GROQ_ENABLED=true`** (or **`VITE_GROQ_ENABLED=true`**) so the build includes a enabled Chat UI.
+3. Optional **`GROQ_MODEL`** / **`VITE_GROQ_MODEL`** (default `llama-3.1-8b-instant`).
 
 ### Security Considerations
 

@@ -1,0 +1,19 @@
+# Static web UI (Vite build + nginx). Groq Chat on this image needs a separate API;
+# use Vercel (api/groq-*.ts) for Chat, or run `npm run dev` locally.
+# Copy `.env.example` → `.env`, set Supabase build args, then:
+#   docker compose up -d --build
+# Web UI: http://localhost:8080
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_HCAPTCHA_SITE_KEY: ${VITE_HCAPTCHA_SITE_KEY:-}
+        GROQ_ENABLED: ${GROQ_ENABLED:-false}
+        GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+    ports:
+      - "8080:80"
+    restart: unless-stopped

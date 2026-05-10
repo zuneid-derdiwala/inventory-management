@@ -12,6 +12,7 @@ import Database from "./pages/Database";
 import ManageDataPage from "./pages/ManageData";
 import ManageBookingPersonsPage from "./pages/ManageBookingPersons";
 import ManageUsers from "./pages/ManageUsers";
+import Chat from "./pages/Chat";
 import ProfileSettings from "./pages/ProfileSettings";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -88,6 +89,13 @@ const App = () => (
                       <ManageUsers />
                     </Layout>
                   </AdminRoute>
+                </ProtectedRoute>
+              } />
+              <Route path="/chat" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Chat />
+                  </Layout>
                 </ProtectedRoute>
               } />
               <Route path="/manage-data" element={

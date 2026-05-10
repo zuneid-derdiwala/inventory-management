@@ -82,10 +82,13 @@ const Navbar = () => {
     { name: "Stock Data", path: "/stock-data" },
     { name: "Manage Data", path: "/manage-data" },
     { name: "Manage Booking Persons", path: "/manage-booking-persons" },
-    ...(isAdmin ? [
-      { name: "Database", path: "/database" },
-      { name: "Users", path: "/manage-users" }
-    ] : []),
+    ...(isAdmin
+      ? [
+          { name: "Database", path: "/database" },
+          { name: "Users", path: "/manage-users" },
+        ]
+      : []),
+    { name: "Chat", path: "/chat" },
   ];
 
   const renderNavLinks = (closeSheet = false) => (
